@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+import math
 import os
 from random import randint
 import time
@@ -110,8 +111,15 @@ class Graphite(MatObject):
         pass
 
 
-
-class ModeratorRod(Rod):
+@dataclass
+class ControlRod(Rod):
+    hight:float
+    
+    def draw(self,screen):
+        space = int((zone[0]-FUEL_ROD_SIZE*self.n)/(self.n+1)) 
+        for i in range(self.n-1):
+            xpos = self.pos[0]+(1.5*space + i*(space+FUEL_ROD_SIZE))
+            pg.draw.rect(screen,(100,100,100),pg.Rect((xpos,self.pos[1]),(FUEL_ROD_SIZE,int(zone[1]*(1-self.hight)))))
     def interact(self, ray:NeutronRay)->tuple:
         pass
 
@@ -126,6 +134,7 @@ size = (1043,531)
 
 wf = WaterField(32,64)
 frod = FuelRod((origin[0]+10,origin[1]+10),15)
+crod = ControlRod((origin[0]+10,origin[1]+10),15,0.5)
 
 pg.init()
 screen = pg.display.set_mode((1200, 800))
@@ -144,6 +153,7 @@ while True:
     pg.display.flip()
     wf.randgen()
     frod.xenonField.randgen()
+    crod.hight = (math.sin(1/(time.time()-start_time))+1)/2
     for event in pg.event.get():
         if event.type == pg.QUIT:
             pg.quit()
