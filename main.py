@@ -10,6 +10,8 @@ import sys
 
 drawList = []
 zone=(1024,512)
+FUEL_ROD_SIZE = 10
+XENON_CELL_SIZE = 10
 
 class MatObject():
     n:float 
@@ -65,11 +67,37 @@ class WaterField():
         for iy, ix in np.ndindex(self.temp.shape):
             pg.draw.rect(screen, (self.temp[iy,ix],50,200), pg.Rect((ix*zone[0]/self.temp.shape[1]+110,iy*zone[1]/self.temp.shape[0]+160),(16,16)))
 
-class ksenonField():
-    def __init__(self,xsize,ysize):
-        self.temp = np.ones((xsize,ysize))
+@dataclass
+class Rod(MatObject):
+    pos:tuple
+    n:int
+
+class FuelRod(Rod):
+    def __post_init__(self):
+        self.xenonField = XsenonField(self.n, pos=self.pos)
+    def draw(self,screen):
+        self.xenonField.draw(screen=screen,fuelRod=self)
+    def interact(self, ray:NeutronRay)->tuple:
+        pass
+
+class XsenonField():
+    def __init__(self, n:int, pos:np.ndarray):
+        self.xenonFields = [np.zeros((FUEL_ROD_SIZE//XENON_CELL_SIZE, zone[1]//XENON_CELL_SIZE)) for i in range(n)]
+        self.n = n
+        self.pos = pos
+        drawList.append(self)
+        self.randgen()
     def randgen(self):
-        _randgen(self.temp)
+        for i in self.xenonFields:
+            _randgen(i)
+    
+    def draw(self, screen:pg.surface.Surface):
+        space = int((zone[0]-FUEL_ROD_SIZE*self.n)/(self.n+1))
+        for i in range(len(self.xenonFields)):
+            xpos = self.pos[0]+(space + i*(space+FUEL_ROD_SIZE))
+            for ix, iy in np.ndindex(self.xenonFields[i].shape):
+                pg.draw.rect(screen, ((100,200,self.xenonFields[i][ix,iy])),pg.Rect((xpos+XENON_CELL_SIZE*ix,self.pos[1]+XENON_CELL_SIZE*iy),(XENON_CELL_SIZE,XENON_CELL_SIZE)))    
+            
 
 # @njit(parallel=True)
 def _randgen(array):
@@ -81,23 +109,9 @@ class Graphite(MatObject):
     def interact(self, ray:NeutronRay)->tuple:
         pass
 
-@dataclass
-class Rod(MatObject):
-    pos:tuple
-    n:int
+
 
 class ModeratorRod(Rod):
-    def interact(self, ray:NeutronRay)->tuple:
-        pass
-
-
-class FuelRod(Rod):
-    def draw(self,screen):
-        space = int((zone[0]-10*self.n )/self.n)
-        for i in range(self.n):
-            xpos = self.pos[0]+(space + i*(space+5))
-            pg.draw.line(screen,(0,100,50),(xpos,self.pos[1]),(xpos,self.pos[1]+zone[1]),10)
-    
     def interact(self, ray:NeutronRay)->tuple:
         pass
 
@@ -111,7 +125,7 @@ origin = (100,150)
 size = (1043,531)
 
 wf = WaterField(32,64)
-frod = FuelRod((origin[0]+10,origin[1]+10),10)
+frod = FuelRod((origin[0]+10,origin[1]+10),15)
 
 pg.init()
 screen = pg.display.set_mode((1200, 800))
@@ -129,6 +143,7 @@ while True:
     screen.blit(pg.font.SysFont("monospace", 15).render(str(1/(time.time()-start_time)),True,(255,255,255),(0,0,0)),(100,100))
     pg.display.flip()
     wf.randgen()
+    frod.xenonField.randgen()
     for event in pg.event.get():
         if event.type == pg.QUIT:
             pg.quit()
