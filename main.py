@@ -18,6 +18,7 @@ Collision_objects = {}
 zone=(1024,512)
 FUEL_ROD_SIZE = 10
 XENON_CELL_SIZE = 5
+WATER_CHANNEL_RADIUS = 5
 STEP = 1/4
 ROD_COUNT = 16
 CLOCK_TIME = 10
@@ -32,14 +33,9 @@ class MatObject():
     def interact(self,ray)->tuple:
         pass
 
-#p=2**(-lambda/l)
-#x=rnd()
-
-
-
 @dataclass
 class NeutronRay():
-    originObjcolor:int
+    originObj:MatObject
     pitc:float
     ORIGIN:np.ndarray
     isFast:bool
@@ -49,34 +45,39 @@ class NeutronRay():
     def __post_init__(self):
         self.originVec = np.array((math.cos(self.pitc),math.sin(self.pitc)))*STEP
         self.pos = self.ORIGIN.copy()
-        
+        self.end_point:np.ndarray
         Neutron_list.append(self)
-    def raycast(self, screen:pg.surface.Surface):
-        # print("a")
-        color = screen.get_at((int(self.pos[0]),int(self.pos[1]))).g 
-        while color == self.originObjcolor:
-            self.pos += self.originVec
-            color = screen.get_at((int(self.pos[0]),int(self.pos[1]))).g 
+    def raycast(self):
+        col_objects = {}
+        for i in Collision_objects.keys:
+            distance = math.fabs(self.pos[0]-float(i))
+            distance2 = math.fabs((self.pos+self.originVec)[0]-float(i))
+            if distance2 < distance:
+                col_objects[math.fabs(i-self.pos)] = Collision_objects[i]
+        for i in sorted(col_objects.keys):
+            n = (self.originVec[0]/i)
+            col_vec = self.pos + n*self.originVec
             
-        lenght = np.linalg.norm(self.pos-self.ORIGIN)
-        matObj = findObj(color)
-        self.originObjcolor = color 
-        
-        
-        return matObj, lenght
+            if 662<col_vec[1]<150:
+                return 
+            if self.originObj != col_objects[i]:
+                if col_objects[i].lvl>self.originObj:
+                    self.originObj = col_objects[i]
+                elif col_objects[i].lvl==self.originObj:
+                    self.originObj = g
+            if type(self.originObj)==ControlRod and col_vec[1]>(zone[1]*(1-self.originObj.hight)+origin[1]+10):
+                self.pos = col_vec
+                continue
+            self.end_point = (col_vec-self.pos)*random()+self.pos
+            if self.originObj.interact(self, np.linalg.norm(self.pos-col_vec),self.end_point):
+                return
+            self.pos = col_vec
     def throw(self, screen:pg.surface.Surface):
-        print(int(self.pos[0]),int(self.pos[1]))
-        is_interacted = False
-        while(not is_interacted):
-            matObj, lenght = self.raycast(screen)
-            if type(matObj) == NoneType:
-                break
-            # pg.draw.circle(screen,(50,0,123),(((self.pos-self.origin)/2)[0],((self.pos-self.origin)/2)[1]),5)
-            is_interacted = matObj.interact(self, lenght,(self.pos+self.ORIGIN)/2)
+        self.raycast()
         self.draw(screen)
         Neutron_list.remove(self)
     def draw(self,screen):
-        pg.draw.line(screen, (255,255,255),(int(self.ORIGIN[0]), int(self.ORIGIN[1])),(int(self.pos[0]),int(self.pos[1])))
+        pg.draw.line(screen, (255,255,255),(int(self.ORIGIN[0]), int(self.ORIGIN[1])),(int(self.end_point[0]),int(self.end_point[1])))
         
 
 class WaterField():
@@ -124,9 +125,14 @@ class Border():
 class Rod(MatObject):
     pos:tuple
     k:int
+    def __post_init__(self):
+        super().__post_init__()
+        self.water_channel = WaterChannel(self.pos)
 
 class FuelRod(Rod):
     def __post_init__(self):
+        super().__post_init__()
+        self.lvl = 0
         self.xenon_field = XsenonField(pos=self.pos)
         Collision_objects[self.pos[0]] = self
         Collision_objects[self.pos[0]+FUEL_ROD_SIZE] = self
@@ -173,10 +179,20 @@ def _randgen(array):
 
 
 class WaterChannel():
-    def __init__(self):
-        Collision_objects
+    
+    def __init__(self,pos):
+        Collision_objects[pos[0]-WATER_CHANNEL_RADIUS]=self
+        Collision_objects[pos[0]+WATER_CHANNEL_RADIUS+FUEL_ROD_SIZE] = self
+        self.lvl = 1
+        self.pos = pos
+        drawList.append(self)
     def interact(self, ray:NeutronRay)->tuple:
         pass
+    def draw(self, screen:pg.surface.Surface):
+        s = pg.Surface((WATER_CHANNEL_RADIUS*2+FUEL_ROD_SIZE, zone[1]))
+        s.set_alpha(128)
+        s.fill((0,0,255))
+        screen.blit(s,(self.pos[0]-WATER_CHANNEL_RADIUS,self.pos[1]))
 @dataclass
 class Graphite():
     k:float
@@ -186,11 +202,9 @@ class Graphite():
 @dataclass
 class ControlRod(Rod):
     hight:float
-
     def __post_init__(self):
         super().__post_init__()
-
-
+        self.lvl = 0
     def draw(self,screen):
         pg.draw.rect(screen,(100,100,100),pg.Rect((self.pos[0],self.pos[1]),(FUEL_ROD_SIZE,int(zone[1]*(1-self.hight)))))
     def interact(self, ray:NeutronRay, lenght, pos:np.ndarray)->tuple:
@@ -205,7 +219,7 @@ origin = (100,150)
 size = (1043,531)
 
 wf = WaterField(32,64)
-
+g = Graphite(10)
 
 frods = []
 crods = [] 
@@ -243,7 +257,7 @@ while True:
     wf.substract()
     for i in frods:
         i:FuelRod
-        i.xenon_field.randgen()
+        i.xenon_field.sum()
     for event in pg.event.get():
         if event.type == pg.QUIT:
             pg.quit()
