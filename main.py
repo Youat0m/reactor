@@ -49,27 +49,28 @@ class NeutronRay():
         Neutron_list.append(self)
     def raycast(self):
         col_objects = {}
-        for i in Collision_objects.keys:
+        for i in Collision_objects.keys():
             distance = math.fabs(self.pos[0]-float(i))
             distance2 = math.fabs((self.pos+self.originVec)[0]-float(i))
             if distance2 < distance:
-                col_objects[math.fabs(i-self.pos)] = Collision_objects[i]
-        for i in sorted(col_objects.keys):
+                col_objects[math.fabs(i-self.pos[0])] = Collision_objects[i]
+        for i in sorted(col_objects.keys()):
             n = (self.originVec[0]/i)
             col_vec = self.pos + n*self.originVec
             
             if 662<col_vec[1]<150:
                 return 
             if self.originObj != col_objects[i]:
-                if col_objects[i].lvl>self.originObj:
+                if col_objects[i].lvl>self.originObj.lvl:
                     self.originObj = col_objects[i]
-                elif col_objects[i].lvl==self.originObj:
+                elif col_objects[i].lvl==self.originObj.lvl:
                     self.originObj = g
             if type(self.originObj)==ControlRod and col_vec[1]>(zone[1]*(1-self.originObj.hight)+origin[1]+10):
                 self.pos = col_vec
                 continue
             self.end_point = (col_vec-self.pos)*random()+self.pos
             if self.originObj.interact(self, np.linalg.norm(self.pos-col_vec),self.end_point):
+                print("a")
                 return
             self.pos = col_vec
     def throw(self, screen:pg.surface.Surface):
@@ -140,16 +141,13 @@ class FuelRod(Rod):
         self.xenon_field.draw(screen=screen)
     def interact(self, ray:NeutronRay, lenght, pos:np.ndarray)->bool:
         pos -= self.pos
-        con = int(pos[0]//self.space)
-        xefield:np.ndarray = self.xenon_field.xenon_fields[con]
-        cord = ((int((pos[0])-self.space*con+self.space-FUEL_ROD_SIZE)//XENON_CELL_SIZE),int(pos[1]//XENON_CELL_SIZE))
-        
-        if(random()<=xefield[cord]/255):
+        cord = (pos[0]//XENON_CELL_SIZE,pos[1]//XENON_CELL_SIZE)
+        if(random()<=self.xenon_field.xenon_field[cord]/255):
             return True
-        if(random() < 2**-(lenght/200)):
+        if(random() < 2**-(lenght/self.k)):
             for i in range(-1,2,2):
-                NeutronRay(200,ray.pitc+(math.pi/3)*i,pos,True)
-            xefield[cord] = math.fabs(xefield[cord]-5)
+                NeutronRay(self,ray.pitc+(math.pi/3)*i,pos,True)
+            self.xenon_field.xenon_field[cord] = math.fabs(self.xenon_field.xenon_field[cord]-5)
             return True
         return False 
 
@@ -186,19 +184,22 @@ class WaterChannel():
         self.lvl = 1
         self.pos = pos
         drawList.append(self)
-    def interact(self, ray:NeutronRay)->tuple:
-        pass
+    def interact(self, ray:NeutronRay, lenght, pos:np.ndarray)->tuple:
+        wf.interact(ray,lenght,pos)
     def draw(self, screen:pg.surface.Surface):
         s = pg.Surface((WATER_CHANNEL_RADIUS*2+FUEL_ROD_SIZE, zone[1]))
         s.set_alpha(128)
         s.fill((0,0,255))
         screen.blit(s,(self.pos[0]-WATER_CHANNEL_RADIUS,self.pos[1]))
-@dataclass
-class Graphite():
-    k:float
-    def interact(self, ray:NeutronRay)->tuple:
-        pass
 
+class Graphite():
+    def __init__(self, k:int):
+        self.k = k
+        self.lvl = 2
+    def interact(self, ray:NeutronRay,lenght, pos:np.ndarray)->tuple:
+        if(random() < 2**-(lenght/self.k)):
+            ray.isFast=False
+        return False
 @dataclass
 class ControlRod(Rod):
     hight:float
@@ -219,7 +220,7 @@ origin = (100,150)
 size = (1043,531)
 
 wf = WaterField(32,64)
-g = Graphite(10)
+g = Graphite(600)
 
 frods = []
 crods = [] 
@@ -227,13 +228,13 @@ crods = []
 #генерируем стержни
 interspace = math.ceil((zone[0]-FUEL_ROD_SIZE*ROD_COUNT)/(ROD_COUNT+1))
 for i in range(ROD_COUNT):
-    frods.append(FuelRod((origin[0]+i*(FUEL_ROD_SIZE+interspace)+interspace,origin[1]+10),1))
+    frods.append(FuelRod((origin[0]+i*(FUEL_ROD_SIZE+interspace)+interspace,origin[1]+10),200))
 for i in range(ROD_COUNT-1):
     crods.append(ControlRod((origin[0]+i*(FUEL_ROD_SIZE+interspace)+interspace+(interspace+FUEL_ROD_SIZE)/2,origin[1]+10),1,0.5))
 
-# NeutronRay(50,random()*2*math.pi,np.array((600.0,400.0)),False)
-# for i in range(10):
-#     NeutronRay(50,random()*2*math.pi,np.array((600,400)),True)
+# NeutronRay(g,random()*2*math.pi,np.array((600.0,400.0)),True)
+for i in range(10):
+    NeutronRay(g,random()*2*math.pi,np.array((600.0,400.0)),True)
 
 
 pg.init()
@@ -244,7 +245,7 @@ pg.display.flip()
 
 
 while True:
-    # pg.time.Clock().tick(1)
+    pg.time.Clock().tick(1)
     start_time = time.time()
     #рисуем drawlist
     for i in drawList:
