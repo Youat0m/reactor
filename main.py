@@ -34,6 +34,34 @@ class MatObject():
     def interact(self,ray)->tuple:
         pass
 
+
+class NeutronSystem():
+    def __init__(self):
+        self.X:np.ndarray = np.zeros(10000)
+        self.Y:np.ndarray = np.zeros(10000)
+        self.Vx:np.ndarray = np.zeros(10000)
+        self.Vy:np.ndarray = np.zeros(10000)
+    def add(self,x:float,y:float,vx:float,vy:float):
+        self.NeutronX
+        self.NeutronY
+        self.NeutronVx
+        self.NeutronVy
+    def raycast(self):
+        self.X+=-1+2(self.Vx>0)
+        border = 1
+        space_between_rods = 1
+        to_delete:tuple = np.where(self.X>border or self.X<border)
+        self.Y+=self.Vy
+        to_delete = to_delete + (np.where(self.Y>border or self.Y<border))
+    def delete(self,to_delete):
+        np.delete(self.X,to_delete)
+        np.delete(self.Y,to_delete)
+        np.delete(self.Vx,to_delete)
+        np.delete(self.Vy,to_delete)
+        
+    
+        
+
 @dataclass
 class NeutronRay():
     originObj:MatObject
@@ -98,7 +126,7 @@ class NeutronRay():
 class WaterField():
     n = 1
     def __init__(self,xsize,ysize):
-        self.temp = np.full((xsize,ysize),200.0)
+        self.temp = np.full((xsize,ysize),50.0)
         drawList.append(self)
         self.pos = np.array(origin)+np.array((10,10))
 
@@ -139,7 +167,7 @@ class WaterField():
         pass
     def draw(self, screen):
         for iy, ix in np.ndindex(self.temp.shape):
-            pg.draw.rect(screen, (self.temp[iy,ix],50,200), pg.Rect((ix*zone[0]/self.temp.shape[1]+110,iy*zone[1]/self.temp.shape[0]+160),(16,16)))
+            pg.draw.rect(screen, (min(self.temp[iy,ix],255),50,200), pg.Rect((ix*zone[0]/self.temp.shape[1]+110,iy*zone[1]/self.temp.shape[0]+160),(16,16)))
 
 
 class Border():
@@ -182,7 +210,7 @@ class FuelRod(Rod):
             return True
         if(random() > 2**-(lenght/self.k)):
             for i in range(-1,2,2):
-                NeutronRay(self,ray.pitc+(math.pi/3)*i,pos,True)
+                NeutronRay(self,ray.pitc+(math.pi/3)*i,q,True)
             self.xenon_field.xenon_field[cord] = math.fabs(self.xenon_field.xenon_field[cord]-5)
             return True
         return False 
@@ -273,7 +301,7 @@ crods = []
 #генерируем стержни
 interspace = math.ceil((zone[0]-FUEL_ROD_SIZE*ROD_COUNT)/(ROD_COUNT+1))
 for i in range(ROD_COUNT):
-    frods.append(FuelRod((origin[0]+i*(FUEL_ROD_SIZE+interspace)+interspace,origin[1]+10),200))
+    frods.append(FuelRod((origin[0]+i*(FUEL_ROD_SIZE+interspace)+interspace,origin[1]+10),100))
 for i in range(ROD_COUNT-1):
     crods.append(ControlRod((origin[0]+i*(FUEL_ROD_SIZE+interspace)+interspace+(interspace+FUEL_ROD_SIZE)/2,origin[1]+10),1,1))
 
@@ -294,14 +322,19 @@ while True:
     pg.time.Clock().tick(1)
     start_time = time.time()
     #рисуем drawlist
+    if DEBUG:
+        pg.draw.rect(screen,(0,0,0),pg.Rect(origin,(size)))
     for i in drawList:
         if DEBUG:
+            
             i.debug_draw(screen)
         else:
             i.draw(screen)
+
     for i in Neutron_list:
         i.throw(screen)
     #рисуем fps
+    print(len(Neutron_list))
     screen.blit(pg.font.SysFont("monospace", 15).render(str(1/(time.time()-start_time))+'  '+str(len(Neutron_list)),True,(255,255,255),(0,0,0)),(100,100))
     pg.display.flip()
     wf.substract()
