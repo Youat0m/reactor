@@ -46,7 +46,7 @@ class NeutronRay():
     def __post_init__(self):
         self.originVec = np.array((math.cos(self.pitc),math.sin(self.pitc)))*STEP
         self.pos = self.ORIGIN.copy()
-        self.end_point:np.ndarray
+        self.end_point:np.ndarray = np.array((100,100))
         Neutron_list.append(self)
     def raycast(self):
         col_objects = {}
@@ -54,30 +54,42 @@ class NeutronRay():
             distance = math.fabs(self.pos[0]-float(i))
             distance2 = math.fabs((self.pos+self.originVec)[0]-float(i))
             if distance2 < distance:
-                col_objects[math.fabs(i-self.pos[0])] = Collision_objects[i]
+                col_objects[math.fabs(i-self.pos[0])] = (Collision_objects[i],i)
         for i in sorted(col_objects.keys()):
-            n = (self.originVec[0]/i)
+            n = ((col_objects[i][1]-self.pos[0])/self.originVec[0])
             col_vec = self.pos + n*self.originVec
             if DEBUG:
-                pg.draw.line(screen, (255,0,0),(self.pos[0],self.pos[1]),(col_vec[0],col_vec[1]))
-            if 662<col_vec[1]<150:
+                pg.draw.circle(screen,(0,0,255),(int(self.pos[0]),int(self.pos[1])),3)
+                pg.draw.circle(screen,(255,0,0),(int(col_vec[0]),int(col_vec[1])),3)
+                pg.display.flip()
+                
+            if 662<col_vec[1] or col_vec[1]<150:
+                self.end_point = col_vec
                 return 
-            if self.originObj != col_objects[i]:
-                if col_objects[i].lvl>self.originObj.lvl:
-                    self.originObj = col_objects[i]
-                elif col_objects[i].lvl==self.originObj.lvl:
+            if type(col_objects[i][0])==Border:
+                self.end_point = col_vec
+                return
+            if self.originObj != col_objects[i][0]:
+                if col_objects[i][0].lvl>self.originObj.lvl:
+                    self.originObj = col_objects[i][0]
+                elif col_objects[i][0].lvl==self.originObj.lvl:
                     self.originObj = g
             if type(self.originObj)==ControlRod and col_vec[1]>(zone[1]*(1-self.originObj.hight)+origin[1]+10):
                 self.pos = col_vec
                 continue
-            self.end_point = (col_vec-self.pos)*random()+self.pos
+            self.end_point = (col_vec-self.pos)*(random()*0.8+0.1)+self.pos
+            if DEBUG:
+                pg.draw.circle(screen,(0,255,0),self.end_point,1)
+                pg.display.flip()
             if self.originObj.interact(self, np.linalg.norm(self.pos-col_vec),self.end_point):
-                print("a")
                 return
+            self.originObj = col_objects[i][0]
             self.pos = col_vec
+
     def throw(self, screen:pg.surface.Surface):
         self.raycast()
-        self.draw(screen)
+        if not DEBUG:
+            self.draw(screen)
         Neutron_list.remove(self)
     def draw(self,screen):
         pg.draw.line(screen, (255,255,255),(int(self.ORIGIN[0]), int(self.ORIGIN[1])),(int(self.end_point[0]),int(self.end_point[1])))
@@ -88,29 +100,40 @@ class WaterField():
     def __init__(self,xsize,ysize):
         self.temp = np.full((xsize,ysize),200.0)
         drawList.append(self)
-
+        self.pos = np.array(origin)+np.array((10,10))
 
     def randgen(self):
         _randgen(self.temp)
 
     def substract(self):
+        
         self.temp = self.temp - np.full_like(self.temp,1/CLOCK_TIME)
         self.temp[np.where(self.temp<0)]=1
         pass
 
     def interact(self, ray:NeutronRay, lenght, pos:np.ndarray):
+        q = pos.copy()
+        pos -= self.pos
         pos = pos//16
-        pos = (pos[0],pos[1])
+        pos = (int(pos[0]),int(pos[1]))
         
-        if(ray.isFast):
-            if self.temp[pos] >= 100:
-                if(random() < 2**-(lenght/3000)):
-                    #ray.isFast = False
-                    self.temp[pos] += 10    
-            else:
-                if(random() < 2**-(lenght/60)):
-                    #ray.isFast = False
-                    self.temp[pos] += 10
+        if(not ray.isFast):
+            try:
+                if self.temp[pos] >= 100:
+                    if(random() < 2**-(lenght/3000)):
+                        #ray.isFast = False
+                        self.temp[pos] += 10
+
+                else:
+                    if(random() < 2**-(lenght/60)):
+                        #ray.isFast = False
+                        self.temp[pos] += 10
+            except:
+                s = pg.surface.Surface((20,20))
+                s.set_alpha(128)
+                pg.draw.circle(s,(255,255,255),(5,5),10)
+                screen.blit(s,(q[0],q[1]))
+                pg.display.flip()
         return False
     def debug_draw(self,screen:pg.surface.Surface):
         pass
@@ -125,6 +148,11 @@ class Border():
         Collision_objects[origin[0]+size[0]] = self
     def interact(self, ray:NeutronRay, lenght, pos:np.ndarray):
         return True
+    def debug_draw(self,screen):
+        pg.draw.line(screen,(255,0,0),(origin[0],0),(origin[0],2000))
+        pg.draw.line(screen,(255,0,0),(origin[0]+size[0],0),(origin[0]+size[0],2000))
+    def draw(self,scree):
+        pass
 
 @dataclass
 class Rod(MatObject):
@@ -141,14 +169,15 @@ class FuelRod(Rod):
         self.xenon_field = XsenonField(pos=self.pos)
         Collision_objects[self.pos[0]] = self
         Collision_objects[self.pos[0]+FUEL_ROD_SIZE] = self
-    # def draw(self,screen):
-    #     self.xenon_field.draw(screen=screen)
+    def draw(self,screen):
+        self.xenon_field.draw(screen=screen)
     def debug_draw(self,screen:pg.surface.Surface):
         pg.draw.line(screen,(0,255,0),(self.pos[0],0),(self.pos[0],2000))
         pg.draw.line(screen,(0,255,0),(self.pos[0]+FUEL_ROD_SIZE,0),(self.pos[0]+FUEL_ROD_SIZE,2000))
     def interact(self, ray:NeutronRay, lenght, pos:np.ndarray)->bool:
+        q = pos.copy()
         pos -= self.pos
-        cord = (pos[0]//XENON_CELL_SIZE,pos[1]//XENON_CELL_SIZE)
+        cord = (int(pos[0]//XENON_CELL_SIZE),int(pos[1]//XENON_CELL_SIZE))
         if(random()<=self.xenon_field.xenon_field[cord]/255):
             return True
         if(random() > 2**-(lenght/self.k)):
@@ -160,7 +189,7 @@ class FuelRod(Rod):
 
 class XsenonField():
     def __init__(self, pos:np.ndarray):
-        self.xenon_field = np.zeros((FUEL_ROD_SIZE//XENON_CELL_SIZE, zone[1]//XENON_CELL_SIZE))
+        self.xenon_field = np.zeros((FUEL_ROD_SIZE//XENON_CELL_SIZE, zone[1]//XENON_CELL_SIZE+1))
         self.pos = pos
         drawList.append(self)
         self.sum_matrix = np.full_like(self.xenon_field,1/CLOCK_TIME)
@@ -246,12 +275,14 @@ interspace = math.ceil((zone[0]-FUEL_ROD_SIZE*ROD_COUNT)/(ROD_COUNT+1))
 for i in range(ROD_COUNT):
     frods.append(FuelRod((origin[0]+i*(FUEL_ROD_SIZE+interspace)+interspace,origin[1]+10),200))
 for i in range(ROD_COUNT-1):
-    crods.append(ControlRod((origin[0]+i*(FUEL_ROD_SIZE+interspace)+interspace+(interspace+FUEL_ROD_SIZE)/2,origin[1]+10),1,0.5))
+    crods.append(ControlRod((origin[0]+i*(FUEL_ROD_SIZE+interspace)+interspace+(interspace+FUEL_ROD_SIZE)/2,origin[1]+10),1,1))
 
 # NeutronRay(g,random()*2*math.pi,np.array((600.0,400.0)),True)
-for i in range(10):
-    NeutronRay(g,random()*2*math.pi,np.array((597.0,400.0)),True)
+for i in range(1000):
+    NeutronRay(g,math.pi*0.002*i,np.array((597.0,400.0)),True)
 
+if DEBUG:
+    drawList.append(Border())
 
 pg.init()
 screen = pg.display.set_mode((1200, 800))
