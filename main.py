@@ -24,6 +24,7 @@ STEP = 1/4
 ROD_COUNT = 16
 CLOCK_TIME = 10
 class MatObject():
+    lvl:int
     n:float 
 
     def __post_init__(self):
@@ -31,7 +32,7 @@ class MatObject():
         return
 
 
-    def interact(self,ray)->tuple:
+    def interact(self, ray, lenght, pos:np.ndarray):
         pass
 
 
@@ -47,7 +48,7 @@ class NeutronSystem():
         self.NeutronVx
         self.NeutronVy
     def raycast(self):
-        self.X+=-1+2(self.Vx>0)
+        self.X+=-1+2*(self.Vx>0)
         border = 1
         space_between_rods = 1
         to_delete:tuple = np.where(self.X>border or self.X<border)
@@ -109,7 +110,7 @@ class NeutronRay():
             if DEBUG:
                 pg.draw.circle(screen,(0,255,0),self.end_point,1)
                 pg.display.flip()
-            if self.originObj.interact(self, np.linalg.norm(self.pos-col_vec),self.end_point):
+            if self.originObj.interact(self,float(np.linalg.norm(self.pos-col_vec)),self.end_point):
                 return
             self.originObj = col_objects[i][0]
             self.pos = col_vec
@@ -143,7 +144,7 @@ class WaterField():
         q = pos.copy()
         pos -= self.pos
         pos = pos//16
-        pos = (int(pos[0]),int(pos[1]))
+        pos = (int(pos[0]),int(pos[1])) # type: ignore
         
         if(not ray.isFast):
             try:
@@ -216,7 +217,7 @@ class FuelRod(Rod):
         return False 
 
 class XsenonField():
-    def __init__(self, pos:np.ndarray):
+    def __init__(self, pos:tuple):
         self.xenon_field = np.zeros((FUEL_ROD_SIZE//XENON_CELL_SIZE, zone[1]//XENON_CELL_SIZE+1))
         self.pos = pos
         drawList.append(self)
@@ -249,8 +250,8 @@ class WaterChannel():
         self.lvl = 1
         self.pos = pos
         drawList.append(self)
-    def interact(self, ray:NeutronRay, lenght, pos:np.ndarray)->tuple:
-        wf.interact(ray,lenght,pos)
+    def interact(self, ray:NeutronRay, lenght, pos:np.ndarray)->bool:
+        return wf.interact(ray,lenght,pos)
     def draw(self, screen:pg.surface.Surface):
         s = pg.Surface((WATER_CHANNEL_RADIUS*2+FUEL_ROD_SIZE, zone[1]))
         s.set_alpha(128)
@@ -264,7 +265,7 @@ class Graphite():
     def __init__(self, k:int):
         self.k = k
         self.lvl = 2
-    def interact(self, ray:NeutronRay,lenght, pos:np.ndarray)->tuple:
+    def interact(self, ray:NeutronRay,lenght, pos:np.ndarray)->bool:
         if(random() > 2**-(lenght/self.k)):
             ray.isFast=False
         return False
@@ -281,7 +282,7 @@ class ControlRod(Rod):
     def debug_draw(self,screen):
         pg.draw.line(screen,(200,255,200),(self.pos[0],0),(self.pos[0],2000))
         pg.draw.line(screen,(200,255,200),(self.pos[0]+FUEL_ROD_SIZE,0),(self.pos[0]+FUEL_ROD_SIZE,2000))
-    def interact(self, ray:NeutronRay, lenght, pos:np.ndarray)->tuple:
+    def interact(self, ray:NeutronRay, lenght, pos:np.ndarray)->bool:
         if(random()<0.95):
             return True
         return False
@@ -307,7 +308,7 @@ for i in range(ROD_COUNT-1):
 
 # NeutronRay(g,random()*2*math.pi,np.array((600.0,400.0)),True)
 for i in range(1000):
-    NeutronRay(g,math.pi*0.002*i,np.array((597.0,400.0)),True)
+    NeutronRay(g,math.pi*0.002*i,np.array((597.0,400.0)),True) # type: ignore
 
 if DEBUG:
     drawList.append(Border())
@@ -339,7 +340,6 @@ while True:
     pg.display.flip()
     wf.substract()
     for i in frods:
-        i:FuelRod
         i.xenon_field.sum()
     for event in pg.event.get():
         if event.type == pg.QUIT:
