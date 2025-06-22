@@ -10,16 +10,17 @@ import sys
 
 
 drawList = []
-Neutron_list=[]
+rod_list = []
 
-Collision_objects = {}
+# Collision_objects = {}
 
 
+ROD_SPACE = 1 #расстояние между стрежнями
+ROD_HIGHT = 1 #высота стрежня 
 DEBUG=True
 zone=(1024,512)
 FUEL_ROD_SIZE = 10
-XENON_CELL_SIZE = 5
-WATER_CHANNEL_RADIUS = 5
+# WATER_CHANNEL_RADIUS = 5
 STEP = 1/4
 ROD_COUNT = 16
 CLOCK_TIME = 10
@@ -38,90 +39,42 @@ class MatObject():
 
 class NeutronSystem():
     def __init__(self):
-        self.X:np.ndarray = np.zeros(10000)
-        self.Y:np.ndarray = np.zeros(10000)
-        self.Vx:np.ndarray = np.zeros(10000)
-        self.Vy:np.ndarray = np.zeros(10000)
-    def add(self,x:float,y:float,vx:float,vy:float):
-        self.NeutronX
-        self.NeutronY
-        self.NeutronVx
-        self.NeutronVy
-    def raycast(self):
-        self.X+=-1+2*(self.Vx>0)
-        border = 1
-        space_between_rods = 1
+        self.X:np.ndarray = np.zeros(0)
+        self.Y:np.ndarray = np.zeros(0)
+        self.k:np.ndarray = np.zeros(0) # длина вектора перемещения (знак проекции на ось x)
+        self.Vy:np.ndarray = np.zeros(0)
+        self.results:np.ndarray
+        #TODO: проверить на векторизацию
+        np.vectorize(self.drawResults)
+
+    def add(self,x:float,y:float,angle:float):
+        size = self.X.size + 1
+        self.X.resize(size)
+        self.X.resize(size)
+        self.k.resize(size)
+        self.Vy.resize(size)
+        self.Y[size-1] = x
+        self.X[size-1] = y
+        self.k[size-1] = ROD_SPACE/math.cos(angle)
+        self.Vy[size-1] = math.sin(angle)*math.fabs(self.k[size-1])/ROD_HIGHT
+    
+    def raycast(self, rods:np.ndarray):
+        self.X+=-1+2*(self.k>0)
+        border = 1 #границы реактора
         to_delete:tuple = np.where(self.X>border or self.X<border)
         self.Y+=self.Vy
         to_delete = to_delete + (np.where(self.Y>border or self.Y<border))
+        self.results = np.array((ROD_COUNT,ROD_HIGHT))
+        self.drawResults()
+        self.results = 2**-(self.results/rods)d
+        self.delete(to_delete)
+    def drawResults(self):
+        self.results[self.X,self.Y] = self.k
     def delete(self,to_delete):
         np.delete(self.X,to_delete)
         np.delete(self.Y,to_delete)
-        np.delete(self.Vx,to_delete)
+        np.delete(self.k,to_delete)
         np.delete(self.Vy,to_delete)
-        
-    
-        
-
-@dataclass
-class NeutronRay():
-    originObj:MatObject
-    pitc:float
-    ORIGIN:np.ndarray
-    isFast:bool
-
-   
-
-    def __post_init__(self):
-        self.originVec = np.array((math.cos(self.pitc),math.sin(self.pitc)))*STEP
-        self.pos = self.ORIGIN.copy()
-        self.end_point:np.ndarray = np.array((100,100))
-        Neutron_list.append(self)
-    def raycast(self):
-        col_objects = {}
-        for i in Collision_objects.keys():
-            distance = math.fabs(self.pos[0]-float(i))
-            distance2 = math.fabs((self.pos+self.originVec)[0]-float(i))
-            if distance2 < distance:
-                col_objects[math.fabs(i-self.pos[0])] = (Collision_objects[i],i)
-        for i in sorted(col_objects.keys()):
-            n = ((col_objects[i][1]-self.pos[0])/self.originVec[0])
-            col_vec = self.pos + n*self.originVec
-            if DEBUG:
-                pg.draw.circle(screen,(0,0,255),(int(self.pos[0]),int(self.pos[1])),3)
-                pg.draw.circle(screen,(255,0,0),(int(col_vec[0]),int(col_vec[1])),3)
-                pg.display.flip()
-                
-            if 662<col_vec[1] or col_vec[1]<150:
-                self.end_point = col_vec
-                return 
-            if type(col_objects[i][0])==Border:
-                self.end_point = col_vec
-                return
-            if self.originObj != col_objects[i][0]:
-                if col_objects[i][0].lvl>self.originObj.lvl:
-                    self.originObj = col_objects[i][0]
-                elif col_objects[i][0].lvl==self.originObj.lvl:
-                    self.originObj = g
-            if type(self.originObj)==ControlRod and col_vec[1]>(zone[1]*(1-self.originObj.hight)+origin[1]+10):
-                self.pos = col_vec
-                continue
-            self.end_point = (col_vec-self.pos)*(random()*0.8+0.1)+self.pos
-            if DEBUG:
-                pg.draw.circle(screen,(0,255,0),self.end_point,1)
-                pg.display.flip()
-            if self.originObj.interact(self,float(np.linalg.norm(self.pos-col_vec)),self.end_point):
-                return
-            self.originObj = col_objects[i][0]
-            self.pos = col_vec
-
-    def throw(self, screen:pg.surface.Surface):
-        self.raycast()
-        if not DEBUG:
-            self.draw(screen)
-        Neutron_list.remove(self)
-    def draw(self,screen):
-        pg.draw.line(screen, (255,255,255),(int(self.ORIGIN[0]), int(self.ORIGIN[1])),(int(self.end_point[0]),int(self.end_point[1])))
         
 
 class WaterField():
@@ -308,7 +261,7 @@ for i in range(ROD_COUNT-1):
 
 # NeutronRay(g,random()*2*math.pi,np.array((600.0,400.0)),True)
 for i in range(1000):
-    NeutronRay(g,math.pi*0.002*i,np.array((597.0,400.0)),True) # type: ignore
+    NeutronRay(g,math.pi*0.002*i,np.array((597.0,400.0)),True)
 
 if DEBUG:
     drawList.append(Border())
