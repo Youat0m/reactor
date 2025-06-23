@@ -44,9 +44,6 @@ class NeutronSystem():
         self.k:np.ndarray = np.zeros(0) # длина вектора перемещения (знак проекции на ось x)
         self.Vy:np.ndarray = np.zeros(0)
         self.results:np.ndarray
-        #TODO: проверить на векторизацию
-        np.vectorize(self.drawResults)
-
     def add(self,x:float,y:float,angle:float):
         size = self.X.size + 1
         self.X.resize(size)
@@ -59,22 +56,32 @@ class NeutronSystem():
         self.Vy[size-1] = math.sin(angle)*math.fabs(self.k[size-1])/ROD_HIGHT
     
     def raycast(self, rods:np.ndarray):
-        self.X+=-1+2*(self.k>0)
+        self.X+=(-1+2*(self.k>0))
         border = 1 #границы реактора
+        n = 1 #пробег в водичке
+        n2 = 1.0
         to_delete:tuple = np.where(self.X>border or self.X<border)
         self.Y+=self.Vy
-        to_delete = to_delete + (np.where(self.Y>border or self.Y<border))
-        self.results = np.array((ROD_COUNT,ROD_HIGHT))
-        self.drawResults()
-        self.results = 2**-(self.results/rods)d
+        to_delete += (np.where(self.Y>border or self.Y<border))
         self.delete(to_delete)
-    def drawResults(self):
-        self.results[self.X,self.Y] = self.k
+        randA = np.random.sample(self.X.size)
+        self.results=np.zeros_like(self.X)
+        to_rod = np.where(2**-(self.k*(ROD_SPACE/FUEL_ROD_SIZE)/n2))>randA
+        reactedRods = rods[self.X[to_rod],self.Y[to_rod]]
+        reactedXe = reactedRods>randA
+        self.results[to_rod] = 1+(reactedXe)
+        rods[self.X[to_rod],self.Y[to_rod]] += (1-2*(self.results[to_rod]))*XENON
+
     def delete(self,to_delete):
         np.delete(self.X,to_delete)
         np.delete(self.Y,to_delete)
         np.delete(self.k,to_delete)
         np.delete(self.Vy,to_delete)
+    
+
+def calculator(a,b):
+    n2 = 1 #пробег в уране
+    return (2**-(a*(ROD_SPACE/FUEL_ROD_SIZE)/n2))>b
         
 
 class WaterField():
