@@ -15,13 +15,15 @@ rod_list = []
 # Collision_objects = {}
 
 XENON_TILE = 0.1
-ROD_SPACE = 1 #расстояние между стрежнями
-ROD_HIGHT = 1 #высота стрежня 
+ROD_HIGHT = 32 #высота стрежня 
 ROD_SIZE = 10
-DEBUG=True
+DEBUG=False
 origin = np.array((150,200))
 ROD_COUNT = 16
 CLOCK_TIME = 10
+ROD_SPACE = (1024-ROD_SIZE*ROD_COUNT)/(ROD_COUNT+1) #расстояние между стрежнями
+
+Uk = 20
 class MatObject():
     lvl:int
     n:float 
@@ -48,7 +50,7 @@ class NeutronSystem():
     def add(self,x:float,y:float,angle:float):
         size = self.X.size + 1
         self.X.resize(size)
-        self.X.resize(size)
+        self.Y.resize(size)
         self.k.resize(size)
         self.Alpha.resize(size)
         self.Alpha[size-1] = angle
@@ -59,29 +61,44 @@ class NeutronSystem():
         self.Vy[size-1] = math.sin(angle)*math.fabs(self.k[size-1])/ROD_HIGHT
         np.vectorize(self.add)
     def raycast(self, rods:np.ndarray):
+        X_ = self.X.copy()
+        Y_ = self.Y.copy()
         self.X+=(-1+2*(self.k>0))
         border = 1 #границы реактора
-        n2 = 1.0
-        to_delete:tuple = np.where(self.X>border or self.X<border)
+        to_delete:tuple = np.where(self.X>ROD_COUNT-1)
+        to_delete +=  np.where(self.X<0)
         self.Y+=self.Vy
-        to_delete += (np.where(self.Y>border or self.Y<border))
+        to_delete += np.where(self.Y>ROD_HIGHT+1)
+        to_delete += np.where(self.Y<0)
         self.delete(to_delete)
         randA = np.random.sample(self.X.size)
-        to_rod = np.where(2**(-(self.k*(ROD_SPACE/ROD_SIZE)/n2)))>randA
+        to_rod = np.where(2**(-(self.k*(ROD_SPACE/ROD_SIZE)/Uk)))>randA
         reactedRods = rods[self.X[to_rod],self.Y[to_rod]]
         reactedXe = reactedRods>randA
         self.results[to_rod] = 1+(reactedXe)
         rods[self.X[to_rod],self.Y[to_rod]] += (1-2*(self.results[to_rod]))*XENON_TILE
 
         to_u_rod = np.where(self.results==1)
-        np.repeat(self.X[to_u_rod],3)
-        np.repeat(self.Y[to_u_rod],3)
-        np.repeat(self.X[to_u_rod],3)
-        
+        np.concatenate([self.X, np.repeat(self.X[to_u_rod],3)])
+        np.concatenate([self.Y, np.repeat(self.Y[to_u_rod],3)])
+        self.delete(to_rod)
+        size = self.X
+        self.k.resize(size)
+        self.Vy.resize(size)
+        self.k.resize(size)
+        self.Alpha.resize(size)        
         self.Alpha = np.random.sample(self.X.size)
         self.k = ROD_SPACE/np.cos(self.Alpha)
-        self.delete(to_rod)
+        self.Vy = np.sin(self.Alpha)*np.abs(self.k)/ROD_HIGHT
+        self.draw(X_, Y_)
 
+
+    def draw(self, x:np.ndarray, y:np.ndarray):
+        for i in range(x.size):
+            pg.draw.line(screen,(255,255,255),x[i],y[i])
+
+    def tick(self, a):
+        self.raycast(a.XenonField)
 
     def delete(self,to_delete):
         np.delete(self.X,to_delete)
@@ -89,168 +106,30 @@ class NeutronSystem():
         np.delete(self.k,to_delete)
         np.delete(self.Vy,to_delete)
     
-class WaterField():
-    n = 1
-    def __init__(self,xsize,ysize):
-        self.temp = np.full((xsize,ysize),50.0)
-        drawList.append(self)
-        self.pos = np.array(origin)+np.array((10,10))
-
-    def randgen(self):
-        _randgen(self.temp)
-
-    def substract(self):
-        
-        self.temp = self.temp - np.full_like(self.temp,1/CLOCK_TIME)
-        self.temp[np.where(self.temp<0)]=1
-        pass
-
-    def interact(self, ray:NeutronRay, lenght, pos:np.ndarray):
-        q = pos.copy()
-        pos -= self.pos
-        pos = pos//16
-        pos = (int(pos[0]),int(pos[1])) # type: ignore
-        
-        if(not ray.isFast):
-            try:
-                if self.temp[pos] >= 100:
-                    if(random() < 2**-(lenght/3000)):
-                        #ray.isFast = False
-                        self.temp[pos] += 10
-
-                else:
-                    if(random() < 2**-(lenght/60)):
-                        #ray.isFast = False
-                        self.temp[pos] += 10
-            except:
-                s = pg.surface.Surface((20,20))
-                s.set_alpha(128)
-                pg.draw.circle(s,(255,255,255),(5,5),10)
-                screen.blit(s,(q[0],q[1]))
-                pg.display.flip()
-        return False
-    def debug_draw(self,screen:pg.surface.Surface):
-        pass
-    def draw(self, screen):
-        for iy, ix in np.ndindex(self.temp.shape):
-            pg.draw.rect(screen, (min(self.temp[iy,ix],255),50,200), pg.Rect((ix*zone[0]/self.temp.shape[1]+110,iy*zone[1]/self.temp.shape[0]+160),(16,16)))
-
-@dataclass
-class Rod(MatObject):
-    pos:tuple
-    k:int
-    def __post_init__(self):
-        super().__post_init__()
-        self.water_channel = WaterChannel(self.pos)
-
-class FuelRod(Rod):
-    def __post_init__(self):
-        super().__post_init__()
-        self.lvl = 0
-        self.xenon_field = XsenonField(pos=self.pos)
-        Collision_objects[self.pos[0]] = self
-        Collision_objects[self.pos[0]+ROD_SIZE] = self
-    def draw(self,screen):
-        self.xenon_field.draw(screen=screen)
-    def debug_draw(self,screen:pg.surface.Surface):
-        pg.draw.line(screen,(0,255,0),(self.pos[0],0),(self.pos[0],2000))
-        pg.draw.line(screen,(0,255,0),(self.pos[0]+ROD_SIZE,0),(self.pos[0]+ROD_SIZE,2000))
-class XsenonField():
+class Urod():
     def __init__(self):
-        self.xenon_field = np.zeros((ROD_COUNT,ROD_HIGHT))
-
-    
-    def tick(self):
-        self.xenon_field =-1
-    def randgen(self):
-        _randgen(self.xenon_field)
-    def debug_draw(self,screen:pg.surface.Surface):
-        pass
-    def draw(self, screen:pg.surface.Surface):
-        for ix, iy in np.ndindex(self.xenon_field.shape):
-            pg.draw.rect(screen, ((100,200,self.xenon_field[ix,iy])),pg.Rect((self.pos[0]+XENON_CELL_SIZE*ix,self.pos[1]+XENON_CELL_SIZE*iy),(XENON_CELL_SIZE,XENON_CELL_SIZE)))    
-    
-
-# @njit(parallel=True)
-def _randgen(array):
-    for iy, ix in np.ndindex(array.shape):
-        array[iy,ix] = randint(0,255)
-
-
-class WaterChannel():
-    
-    def __init__(self,pos):
-        Collision_objects[pos[0]-WATER_CHANNEL_RADIUS]=self
-        Collision_objects[pos[0]+WATER_CHANNEL_RADIUS+ROD_SIZE] = self
-        self.lvl = 1
-        self.pos = pos
+        self.XenonField:np.ndarray = np.full((ROD_COUNT,ROD_HIGHT),0.1)
         drawList.append(self)
-    def interact(self, ray:NeutronRay, lenght, pos:np.ndarray)->bool:
-        return wf.interact(ray,lenght,pos)
-    def draw(self, screen:pg.surface.Surface):
-        s = pg.Surface((WATER_CHANNEL_RADIUS*2+ROD_SIZE, zone[1]))
-        s.set_alpha(128)
-        s.fill((0,0,255))
-        screen.blit(s,(self.pos[0]-WATER_CHANNEL_RADIUS,self.pos[1]))
-    def debug_draw(self,screen:pg.surface.Surface):
-        pg.draw.line(screen,(0,0,255),(self.pos[0]-WATER_CHANNEL_RADIUS,0),(self.pos[0]-WATER_CHANNEL_RADIUS,2000))
-        pg.draw.line(screen,(0,0,255),(self.pos[0]+WATER_CHANNEL_RADIUS+ROD_SIZE,0),(self.pos[0]+WATER_CHANNEL_RADIUS+ROD_SIZE,2000))
-
-class Graphite():
-    def __init__(self, k:int):
-        self.k = k
-        self.lvl = 2
-    def interact(self, ray:NeutronRay,lenght, pos:np.ndarray)->bool:
-        if(random() > 2**-(lenght/self.k)):
-            ray.isFast=False
-        return False
-@dataclass
-class ControlRod(Rod):
-    hight:float
-    def __post_init__(self):
-        super().__post_init__()
-        self.lvl = 0
-        Collision_objects[self.pos[0]] = self
-        Collision_objects[self.pos[0]+ROD_SIZE] = self
-    def draw(self,screen):
-        pg.draw.rect(screen,(100,100,100),pg.Rect((self.pos[0],self.pos[1]),(ROD_SIZE,int(zone[1]*(1-self.hight)))))
-    def debug_draw(self,screen):
-        pg.draw.line(screen,(200,255,200),(self.pos[0],0),(self.pos[0],2000))
-        pg.draw.line(screen,(200,255,200),(self.pos[0]+ROD_SIZE,0),(self.pos[0]+ROD_SIZE,2000))
-    def interact(self, ray:NeutronRay, lenght, pos:np.ndarray)->bool:
-        if(random()<0.95):
-            return True
-        return False
-
-
-
+    def tick(self):
+        self.XenonField+=0.05
+    def draw(self,screen:pg.surface.Surface):
+        for ix, iy in np.ndindex(self.XenonField.shape):
+            xcord = origin[0]+ix*ROD_SIZE+ix*ROD_SPACE+ROD_SPACE
+            pg.draw.rect(screen,(0,200,50),pg.Rect(xcord,origin[1]+iy*ROD_HIGHT,ROD_SIZE,ROD_HIGHT))
 
 origin = (100,150)
-size = (1043,531)
 
-wf = WaterField(32,64)
-g = Graphite(600)
+Nsys = NeutronSystem()
+rods = Urod()
 
-frods = []
-crods = [] 
-
-#генерируем стержни
-interspace = math.ceil((zone[0]-ROD_SIZE*ROD_COUNT)/(ROD_COUNT+1))
-for i in range(ROD_COUNT):
-    frods.append(FuelRod((origin[0]+i*(ROD_SIZE+interspace)+interspace,origin[1]+10),100))
-for i in range(ROD_COUNT-1):
-    crods.append(ControlRod((origin[0]+i*(ROD_SIZE+interspace)+interspace+(interspace+ROD_SIZE)/2,origin[1]+10),1,1))
-
-# NeutronRay(g,random()*2*math.pi,np.array((600.0,400.0)),True)
-for i in range(1000):
-    NeutronRay(g,math.pi*0.002*i,np.array((597.0,400.0)),True)
-
-if DEBUG:
-    drawList.append(Border())
+print("adding neutrons")
+for i in range(100):
+    Nsys.add(randint(0,14),randint(0,14),random()*2*math.pi)
+print("finish adding")
 
 pg.init()
 screen = pg.display.set_mode((1200, 800))
-pg.draw.rect(screen, (0,100,100), pg.Rect(origin, size), 10)
+pg.draw.rect(screen, (0,100,100), pg.Rect(origin, (1043,531)), 10)
 pg.display.flip()
 
 
@@ -259,7 +138,7 @@ while True:
     start_time = time.time()
     #рисуем drawlist
     if DEBUG:
-        pg.draw.rect(screen,(0,0,0),pg.Rect(origin,(size)))
+        pg.draw.rect(screen,(0,0,0),pg.Rect(origin,(1043,531)))
     for i in drawList:
         if DEBUG:
             
@@ -267,15 +146,12 @@ while True:
         else:
             i.draw(screen)
 
-    for i in Neutron_list:
-        i.throw(screen)
+    Nsys.tick(rods)
+    rods.tick()
     #рисуем fps
-    print(len(Neutron_list))
-    screen.blit(pg.font.SysFont("monospace", 15).render(str(1/(time.time()-start_time))+'  '+str(len(Neutron_list)),True,(255,255,255),(0,0,0)),(100,100))
+    screen.blit(pg.font.SysFont("monospace", 15).render(str(1/(time.time()-start_time))+'  '+str(Nsys.X.size),
+                True,(255,255,255),(0,0,0)),(100,100))
     pg.display.flip()
-    wf.substract()
-    for i in frods:
-        i.xenon_field.sum()
     for event in pg.event.get():
         if event.type == pg.QUIT:
             pg.quit()
