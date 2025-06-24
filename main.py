@@ -14,17 +14,19 @@ rod_list = []
 
 # Collision_objects = {}
 
-XENON_TILE = 0.1
+XENON_TILE = 0.01
 ROD_HIGHT_COUNT = 32 #высота стрежня в клетках симуляции
-ROD_CELL_HIGHT = 512/32
+HIGHT = 512
+ROD_CELL_HIGHT = HIGHT/32
 ROD_SIZE = 10
 DEBUG=False
 origin = np.array((150,200))
 ROD_COUNT = 16
 CLOCK_TIME = 10
 ROD_SPACE = int((1024-ROD_SIZE*ROD_COUNT)/(ROD_COUNT+1)) #расстояние между стрежнями
+CONTROL_HIGHT = 0.0
 
-Uk = 20
+Uk = 100
 class MatObject():
     lvl:int
     n:float 
@@ -59,7 +61,7 @@ class NeutronSystem():
         self.Y[size-1] = y
         self.X[size-1] = x
         self.k = ROD_SPACE/np.cos(self.Alpha)
-        self.Vy[size-1] = math.sin(angle)*math.fabs(self.k[size-1])/(512/ROD_HIGHT_COUNT)
+        self.Vy[size-1] = math.sin(angle)*math.fabs(self.k[size-1])/(HIGHT/ROD_HIGHT_COUNT)
         np.vectorize(self.add)
     # @njit(parallel =True)
     def raycast(self, rods:np.ndarray):
@@ -70,6 +72,7 @@ class NeutronSystem():
         to_delete = np.where(self.X>ROD_COUNT-1)
         to_delete +=  np.where(self.X<0)
         self.Y+=self.Vy
+        to_delete += np.where((self.Y+self.start_pos.transpose()[1])/(2*ROD_HIGHT_COUNT)<CONTROL_HIGHT)
         to_delete += np.where(self.Y>ROD_HIGHT_COUNT-1)
         to_delete += np.where(self.Y<0)
         self.delete(np.concatenate(to_delete))
@@ -94,17 +97,17 @@ class NeutronSystem():
         self.k.resize(size)
         self.Alpha += (np.random.sample(self.X.size)-0.5)*math.pi
         self.k = ROD_SPACE/np.cos(self.Alpha)
-        self.Vy = np.sin(self.Alpha)*np.abs(self.k)/(512/ROD_HIGHT_COUNT)
+        self.Vy = np.sin(self.Alpha)*np.abs(self.k)/(HIGHT/ROD_HIGHT_COUNT)
 
 
     def draw(self):
         for i in range(self.start_pos.shape[0]):
             pg.draw.line(screen,(255,255,255),
-                         (self.start_pos[i][0]*(ROD_SPACE+ROD_SIZE)+origin[0],
+                         ((self.start_pos[i][0]+1)*(ROD_SPACE+ROD_SIZE)+origin[0],
                           self.start_pos[i][1]*ROD_CELL_HIGHT+origin[1]),
-                         (self.X[i]*(ROD_SPACE+ROD_SIZE)+origin[0]
+                         ((self.X[i]+1)*(ROD_SPACE+ROD_SIZE)+origin[0]
                           ,self.Y[i]*ROD_CELL_HIGHT+origin[1]))
-            pg.draw.circle(screen,(255,0,0),(self.X[i]*(ROD_SPACE+ROD_SIZE)+origin[0]
+            pg.draw.circle(screen,(255,0,0),((self.X[i]+1)*(ROD_SPACE+ROD_SIZE)+origin[0]
                           ,self.Y[i]*ROD_CELL_HIGHT+origin[1]),3)
 
     def tick(self, a):
@@ -124,19 +127,31 @@ class NeutronSystem():
 class Urod():
     def __init__(self):
         self.XenonField:np.ndarray = np.full((ROD_COUNT,ROD_HIGHT_COUNT),0.1)
+        # for ix, iy in np.ndindex(self.XenonField.shape):
+        #     if iy>10 and ix>7:
+        #         self.XenonField[ix][iy] = 0.7
         drawList.append(self)
     def tick(self):
-        self.XenonField+=0.05
+        self.XenonField+=0.005
+        if random()<0.15:
+            Nsys.add(randint(0,14),randint(0,14),random()*2*math.pi)
     def draw(self,screen:pg.surface.Surface):
         for ix, iy in np.ndindex(self.XenonField.shape):
             xcord = origin[0]+ix*ROD_SIZE+ix*ROD_SPACE+ROD_SPACE
-            bColor = max(0,min(self.XenonField[ix,iy],255))
-            pg.draw.rect(screen,(0,200,bColor),pg.Rect(xcord,origin[1]+iy*(512//ROD_HIGHT_COUNT),ROD_SIZE,512//ROD_HIGHT_COUNT))
+            bColor = max(0,min(self.XenonField[ix,iy]*255,255))
+            pg.draw.rect(screen,(0,200,bColor),pg.Rect(xcord,origin[1]+iy*(int(ROD_CELL_HIGHT)),ROD_SIZE,int(ROD_CELL_HIGHT)))
+
+class ControlRod():
+    def draw(self, screen):
+        for i in range(ROD_COUNT-1):
+            xcord = i*(ROD_SPACE+ROD_SIZE)+1.5*ROD_SPACE+0.5*ROD_SIZE+origin[0]
+            pg.draw.rect(screen, (50,50,50), pg.Rect(xcord, origin[1], ROD_SIZE, HIGHT*CONTROL_HIGHT))
 
 origin = (100,150)
 
 Nsys = NeutronSystem()
 rods = Urod()
+drawList.append(ControlRod())
 
 print("adding neutrons")
 for i in range(1000):
@@ -153,12 +168,13 @@ pg.display.flip()
 
 
 while True:
-    # pg.time.Clock().tick(1)
+    pg.time.Clock().tick(10)
     start_time = time.time()
     #рисуем drawlist
     if DEBUG:
         pg.draw.rect(screen,(0,0,0),pg.Rect(origin,(1043,531)))
-    pg.draw.rect(screen,(0,0,0),pg.Rect(origin[0]+10,origin[1]+10,1024,512))
+    pg.draw.rect(screen,(0,0,0),pg.Rect(origin[0]+10,origin[1]+10,1024,HIGHT))
+    Nsys.tick(rods)
     for i in drawList:
         if DEBUG:
             
@@ -166,7 +182,6 @@ while True:
         else:
             i.draw(screen)
     
-    Nsys.tick(rods)
     rods.tick()
     #рисуем fps
     pg.draw.rect(screen,(10,10,10),pg.Rect(100,100,400,15))
@@ -177,4 +192,6 @@ while True:
         if event.type == pg.QUIT:
             pg.quit()
             sys.exit()
+        if event.type == pg.MOUSEBUTTONUP:
+            CONTROL_HIGHT = min((pg.mouse.get_pos()[1]-origin[1])/HIGHT,1)
     
