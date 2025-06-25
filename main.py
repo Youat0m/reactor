@@ -2,10 +2,8 @@ from dataclasses import dataclass, field
 import math
 from random import randint, random
 import time
-from types import NoneType
 import numpy as np
 import pygame as pg
-from numba import jit, njit
 import sys
 
 
@@ -17,7 +15,8 @@ rod_list = []
 XENON_TILE = 0.01
 ROD_HIGHT_COUNT = 32 #высота стрежня в клетках симуляции
 HIGHT = 512
-ROD_CELL_HIGHT = HIGHT/32
+WIDGH = 1024
+ROD_CELL_HIGHT = HIGHT/ROD_HIGHT_COUNT
 ROD_SIZE = 10
 DEBUG=False
 origin = np.array((150,200))
@@ -25,8 +24,10 @@ ROD_COUNT = 16
 CLOCK_TIME = 10
 ROD_SPACE = int((1024-ROD_SIZE*ROD_COUNT)/(ROD_COUNT+1)) #расстояние между стрежнями
 CONTROL_HIGHT = 0.0
+WATER_CELL_SIZE = 32
 
-Uk = 100
+Uk = 20
+Wk = 200
 class MatObject():
     lvl:int
     n:float 
@@ -64,19 +65,26 @@ class NeutronSystem():
         self.Vy[size-1] = math.sin(angle)*math.fabs(self.k[size-1])/(HIGHT/ROD_HIGHT_COUNT)
         np.vectorize(self.add)
     # @njit(parallel =True)
-    def raycast(self, rods:np.ndarray):
+    def raycast(self, rods:np.ndarray, water:np.ndarray):
         
         self.start_pos =  np.vstack([self.X, self.Y])
-        self.start_pos= self.start_pos.transpose()
         self.X+=(-1+2*(self.k>0))
         to_delete = np.where(self.X>ROD_COUNT-1)
         to_delete +=  np.where(self.X<0)
         self.Y+=self.Vy
-        to_delete += np.where((self.Y+self.start_pos.transpose()[1])/(2*ROD_HIGHT_COUNT)<CONTROL_HIGHT)
-        to_delete += np.where(self.Y>ROD_HIGHT_COUNT-1)
+        to_delete += np.where((self.Y+self.start_pos[1])/(2*ROD_HIGHT_COUNT)<CONTROL_HIGHT)
+        to_delete += np.where(self.Y>ROD_HIGHT_COUNT)
         to_delete += np.where(self.Y<0)
         self.delete(np.concatenate(to_delete))
+
         randA = np.random.sample(self.X.size)
+        to_water = np.where(2**(-(np.abs(self.k))/Wk)<randA)
+        randNum = random()
+        x_ = np.floor(((self.X[to_water]-self.start_pos[0,to_water])*randNum+self.start_pos[0,to_water])*(ROD_SPACE+ROD_SIZE)//WATER_CELL_SIZE).astype(int)
+        y_ = np.floor(((self.Y[to_water]-self.start_pos[1,to_water])*randNum+self.start_pos[1,to_water])*ROD_CELL_HIGHT//WATER_CELL_SIZE).astype(int)
+        water[x_,y_]+=1
+        self.delete(to_water)
+        randA.resize(self.X.size)
         to_rod = np.where(2**(-(np.abs(self.k))/Uk)<randA)
         reactedRods = rods[np.floor(self.X[to_rod]).astype(int),np.floor(self.Y[to_rod]).astype(int)]
         randA.resize(reactedRods.size)
@@ -98,10 +106,11 @@ class NeutronSystem():
         self.Alpha += (np.random.sample(self.X.size)-0.5)*math.pi
         self.k = ROD_SPACE/np.cos(self.Alpha)
         self.Vy = np.sin(self.Alpha)*np.abs(self.k)/(HIGHT/ROD_HIGHT_COUNT)
+        self.start_pos= self.start_pos.transpose()
 
 
     def draw(self):
-        for i in range(self.start_pos.shape[0]):
+        for i in range(min(self.start_pos.shape[0],1000)):
             pg.draw.line(screen,(255,255,255),
                          ((self.start_pos[i][0]+1)*(ROD_SPACE+ROD_SIZE)+origin[0],
                           self.start_pos[i][1]*ROD_CELL_HIGHT+origin[1]),
@@ -110,8 +119,8 @@ class NeutronSystem():
             pg.draw.circle(screen,(255,0,0),((self.X[i]+1)*(ROD_SPACE+ROD_SIZE)+origin[0]
                           ,self.Y[i]*ROD_CELL_HIGHT+origin[1]),3)
 
-    def tick(self, a):
-        self.raycast(a.XenonField)
+    def tick(self, a, b):
+        self.raycast(a.XenonField, b)
         self.draw()
 
     def delete(self,to_delete):
@@ -120,7 +129,7 @@ class NeutronSystem():
         self.k = np.delete(self.k,to_delete)
         self.Vy = np.delete(self.Vy,to_delete)
         self.Alpha = np.delete(self.Alpha, to_delete)
-        self.start_pos = np.delete(self.start_pos,to_delete,0)
+        self.start_pos = np.delete(self.start_pos.transpose(),to_delete,0).transpose()
 
 
     
@@ -147,8 +156,21 @@ class ControlRod():
             xcord = i*(ROD_SPACE+ROD_SIZE)+1.5*ROD_SPACE+0.5*ROD_SIZE+origin[0]
             pg.draw.rect(screen, (50,50,50), pg.Rect(xcord, origin[1], ROD_SIZE, HIGHT*CONTROL_HIGHT))
 
-origin = (100,150)
+class WaterFiled():
+    def __init__(self):
+        self.field = np.ones((WIDGH//WATER_CELL_SIZE,HIGHT//WATER_CELL_SIZE))*20
+    def tick(self):
+        self.field *= 0.99 
+    def draw(self, screen):
+        for ix, iy in np.ndindex(self.field.shape):
+            color = min(self.field[ix,iy],255)
+            pg.draw.rect(screen, (color, color, 200), pg.Rect(ix*WATER_CELL_SIZE+origin[0]+10,iy*WATER_CELL_SIZE+origin[1]+10,WATER_CELL_SIZE,WATER_CELL_SIZE))
+        
 
+origin = (100,10)
+
+wf = WaterFiled()
+drawList.append(wf)
 Nsys = NeutronSystem()
 rods = Urod()
 drawList.append(ControlRod())
@@ -159,7 +181,7 @@ for i in range(1000):
 print("finish adding")
 
 pg.init()
-screen = pg.display.set_mode((1200, 800))
+screen = pg.display.set_mode((1200, 700))
 pg.draw.rect(screen, (0,100,100), pg.Rect(origin, (1043,531)), 10)
 pg.draw.circle(screen,(255,0,0), (origin[0],origin[1]),20)
 pg.draw.circle(screen,(255,0,0), (((ROD_COUNT-1)*(ROD_SPACE+ROD_SIZE)+origin[0],
@@ -174,13 +196,13 @@ while True:
     if DEBUG:
         pg.draw.rect(screen,(0,0,0),pg.Rect(origin,(1043,531)))
     pg.draw.rect(screen,(0,0,0),pg.Rect(origin[0]+10,origin[1]+10,1024,HIGHT))
-    Nsys.tick(rods)
     for i in drawList:
         if DEBUG:
             
             i.debug_draw(screen)
         else:
             i.draw(screen)
+    Nsys.tick(rods,wf.field)
     
     rods.tick()
     #рисуем fps
