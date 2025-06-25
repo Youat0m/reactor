@@ -5,13 +5,16 @@ import time
 import numpy as np
 import pygame as pg
 import sys
+import cv2
+from PIL import Image, ImageDraw
 
 
 drawList = []
 rod_list = []
 
 # Collision_objects = {}
-
+LIFE = True
+ROBOT = False
 XENON_TILE = 0.01
 ROD_HIGHT_COUNT = 32 #высота стрежня в клетках симуляции
 HIGHT = 512
@@ -28,18 +31,6 @@ WATER_CELL_SIZE = 32
 
 Uk = 20
 Wk = 200
-class MatObject():
-    lvl:int
-    n:float 
-
-    def __post_init__(self):
-        drawList.append(self)
-        return
-
-
-    def interact(self, ray, lenght, pos:np.ndarray):
-        pass
-
 
 
 
@@ -64,7 +55,7 @@ class NeutronSystem():
         self.k = ROD_SPACE/np.cos(self.Alpha)
         self.Vy[size-1] = math.sin(angle)*math.fabs(self.k[size-1])/(HIGHT/ROD_HIGHT_COUNT)
         np.vectorize(self.add)
-    # @njit(parallel =True)
+
     def raycast(self, rods:np.ndarray, water:np.ndarray):
         
         self.start_pos =  np.vstack([self.X, self.Y])
@@ -110,7 +101,7 @@ class NeutronSystem():
 
 
     def draw(self):
-        for i in range(min(self.start_pos.shape[0],1000)):
+        for i in range(min(self.start_pos.shape[0],10000)):
             pg.draw.line(screen,(255,255,255),
                          ((self.start_pos[i][0]+1)*(ROD_SPACE+ROD_SIZE)+origin[0],
                           self.start_pos[i][1]*ROD_CELL_HIGHT+origin[1]),
@@ -122,7 +113,19 @@ class NeutronSystem():
     def tick(self, a, b):
         self.raycast(a.XenonField, b)
         self.draw()
-
+    def PIL_tick(self, a, b, c:ImageDraw.ImageDraw):
+        self.raycast(a.XenonField, b)
+        self.PIL_draw(c)
+    
+    def PIL_draw(self, draw:ImageDraw.ImageDraw):
+        for i in range(min(self.start_pos.shape[0],10000)):
+            draw.line([((self.start_pos[i][0]+1)*(ROD_SPACE+ROD_SIZE)+origin[0],
+                          self.start_pos[i][1]*ROD_CELL_HIGHT+origin[1]),
+                         ((self.X[i]+1)*(ROD_SPACE+ROD_SIZE)+origin[0]
+                          ,self.Y[i]*ROD_CELL_HIGHT+origin[1])],fill=(255,255,255),width=1)
+            draw.circle(((self.X[i]+1)*(ROD_SPACE+ROD_SIZE)+origin[0]
+                          ,self.Y[i]*ROD_CELL_HIGHT+origin[1]),3,fill=(255,0,0))
+    
     def delete(self,to_delete):
         self.X = np.delete(self.X,to_delete)
         self.Y = np.delete(self.Y,to_delete)
@@ -136,9 +139,6 @@ class NeutronSystem():
 class Urod():
     def __init__(self):
         self.XenonField:np.ndarray = np.full((ROD_COUNT,ROD_HIGHT_COUNT),0.1)
-        # for ix, iy in np.ndindex(self.XenonField.shape):
-        #     if iy>10 and ix>7:
-        #         self.XenonField[ix][iy] = 0.7
         drawList.append(self)
     def tick(self):
         self.XenonField+=0.005
@@ -147,8 +147,15 @@ class Urod():
     def draw(self,screen:pg.surface.Surface):
         for ix, iy in np.ndindex(self.XenonField.shape):
             xcord = origin[0]+ix*ROD_SIZE+ix*ROD_SPACE+ROD_SPACE
+            bColor = max(0,min(self.XenonField[ix,iy],255))
+            pg.draw.rect(screen,(0,200,bColor),pg.Rect(xcord,origin[1]+iy*(int(ROD_CELL_HIGHT)),ROD_SIZE,int(ROD_CELL_HIGHT)))
+    
+    def draw_PIL(self, draw:ImageDraw.ImageDraw):
+        for ix, iy in np.ndindex(self.XenonField.shape):
+            xcord = origin[0]+ix*ROD_SIZE+ix*ROD_SPACE+ROD_SPACE
             bColor = max(0,min(self.XenonField[ix,iy]*255,255))
             pg.draw.rect(screen,(0,200,bColor),pg.Rect(xcord,origin[1]+iy*(int(ROD_CELL_HIGHT)),ROD_SIZE,int(ROD_CELL_HIGHT)))
+
 
 class ControlRod():
     def draw(self, screen):
@@ -165,7 +172,9 @@ class WaterFiled():
         for ix, iy in np.ndindex(self.field.shape):
             color = min(self.field[ix,iy],255)
             pg.draw.rect(screen, (color, color, 200), pg.Rect(ix*WATER_CELL_SIZE+origin[0]+10,iy*WATER_CELL_SIZE+origin[1]+10,WATER_CELL_SIZE,WATER_CELL_SIZE))
-        
+class Robot():
+    def tick(self, ns:NeutronSystem, reactivity):
+        pass
 
 origin = (100,10)
 
@@ -188,32 +197,60 @@ pg.draw.circle(screen,(255,0,0), (((ROD_COUNT-1)*(ROD_SPACE+ROD_SIZE)+origin[0],
                           (ROD_HIGHT_COUNT-1)*ROD_CELL_HIGHT+origin[1])),20)
 pg.display.flip()
 
-
-while True:
-    pg.time.Clock().tick(10)
-    start_time = time.time()
-    #рисуем drawlist
-    if DEBUG:
-        pg.draw.rect(screen,(0,0,0),pg.Rect(origin,(1043,531)))
-    pg.draw.rect(screen,(0,0,0),pg.Rect(origin[0]+10,origin[1]+10,1024,HIGHT))
-    for i in drawList:
-        if DEBUG:
+prev_count = 1
+prev_k = 1
+power = 1
+PAUSE = True
+if LIFE:
+    while True:
+        if not PAUSE:
+            pg.time.Clock().tick(10)
+            start_time = time.time()
+            #рисуем drawlist
+            if DEBUG:
+                pg.draw.rect(screen,(0,0,0),pg.Rect(origin,(1043,531)))
+            pg.draw.rect(screen,(0,0,0),pg.Rect(origin[0]+10,origin[1]+10,1024,HIGHT))
+            for i in drawList:
+                if DEBUG:
+                    
+                    i.debug_draw(screen)
+                else:
+                    i.draw(screen)
+            Nsys.tick(rods,wf.field)
             
-            i.debug_draw(screen)
-        else:
-            i.draw(screen)
-    Nsys.tick(rods,wf.field)
-    
-    rods.tick()
-    #рисуем fps
-    pg.draw.rect(screen,(10,10,10),pg.Rect(100,100,400,15))
-    screen.blit(pg.font.SysFont("monospace", 15).render(str(1/(time.time()-start_time))+'  '+str(Nsys.X.size),
-                True,(255,255,255),(0,0,0)),(100,100))
-    pg.display.flip()
-    for event in pg.event.get():
-        if event.type == pg.QUIT:
-            pg.quit()
-            sys.exit()
-        if event.type == pg.MOUSEBUTTONUP:
-            CONTROL_HIGHT = min((pg.mouse.get_pos()[1]-origin[1])/HIGHT,1)
+            rods.tick()
+            wf.tick()
+            #рисуем fps и прочие
+            pg.draw.rect(screen,(0,0,0),pg.Rect(100,600,400,40))
+            screen.blit(pg.font.SysFont("monospace", 15).render(str(1/(time.time()-start_time))+
+                                                                '  '+str(Nsys.X.size),
+                        True,(255,255,255),(0,0,0)),(100,600))
+            screen.blit(pg.font.SysFont("monospace", 15).render(str(Nsys.X.size/(prev_count+1)),
+                        True,(255,255,255),(0,0,0)),(100,620))
+            screen.blit(pg.font.SysFont("monospace", 15).render(str(np.sum(wf.field)),
+                        True,(255,255,255),(0,0,0)),(100,640))
+            prev_k = Nsys.X.size/(prev_count+1)
+            prev_count = Nsys.X.size
+            pg.display.flip()
+        for event in pg.event.get():
+            if event.type == pg.QUIT:
+                pg.quit()
+                sys.exit()
+            if event.type == pg.MOUSEBUTTONUP:
+                CONTROL_HIGHT = min((pg.mouse.get_pos()[1]-origin[1])/HIGHT,1)
+                PAUSE= False
+else:
+    counter = 1
+    fourcc = cv2.VideoWriter.fourcc(*'mp4v')
+    out = cv2.VideoWriter("out.mp4",fourcc,20,(WIDGH,HIGHT))
+    while(counter< 10000):
+        img = Image.new(mode="RGB",size=(WIDGH,HIGHT))
+        draw = ImageDraw.Draw(img)
+        for i in drawList:
+            i.draw_PIL(draw)
+        Nsys.tick(rods,wf.field)    
+        rods.tick()
+        wf.tick()
+                
+
     
