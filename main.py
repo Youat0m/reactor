@@ -6,10 +6,11 @@ import pygame as pg
 import sys
 import cv2
 from PIL import Image, ImageDraw
+import matplotlib.pyplot as plt
 
 
 
-LIFE = False
+LIFE = True
 ROBOT = False
 XENON_TILE = 0.01
 ROD_HIGHT_COUNT = 32 #высота стрежня в клетках симуляции
@@ -22,10 +23,10 @@ origin = np.array((150,200))
 ROD_COUNT = 16
 CLOCK_TIME = 10
 ROD_SPACE = int((1024-ROD_SIZE*ROD_COUNT)/(ROD_COUNT+1)) #расстояние между стрежнями
-CONTROL_HIGHT = 0.4
+control_hight = 0.4
 WATER_CELL_SIZE = 32
 
-Uk = 20
+Uk = 40
 Wk = 200
 
 drawList = []
@@ -60,18 +61,18 @@ class NeutronSystem():
         to_delete = np.where(self.X>ROD_COUNT-1)
         to_delete +=  np.where(self.X<0)
         self.Y+=self.Vy
-        to_delete += np.where((self.Y+self.start_pos[1])/(2*ROD_HIGHT_COUNT)<CONTROL_HIGHT)
+        to_delete += np.where((self.Y+self.start_pos[1])/(2*ROD_HIGHT_COUNT)<control_hight)
         to_delete += np.where(self.Y>ROD_HIGHT_COUNT)
         to_delete += np.where(self.Y<0)
         self.delete(np.concatenate(to_delete))
 
         randA = np.random.sample(self.X.size)
-        to_water = np.where(2**(-(np.abs(self.k))/Wk)<randA)
-        randNum = random()
-        x_ = np.floor(((self.X[to_water]-self.start_pos[0,to_water])*randNum+self.start_pos[0,to_water])*(ROD_SPACE+ROD_SIZE)//WATER_CELL_SIZE).astype(int)
-        y_ = np.floor(((self.Y[to_water]-self.start_pos[1,to_water])*randNum+self.start_pos[1,to_water])*ROD_CELL_HIGHT//WATER_CELL_SIZE).astype(int)
-        water[x_,y_]+=1
-        self.delete(to_water)
+        # to_water = np.where(2**(-(np.abs(self.k))/Wk)<randA)
+        # randNum = random()
+        # x_ = np.floor(((self.X[to_water]-self.start_pos[0,to_water])*randNum+self.start_pos[0,to_water])*(ROD_SPACE+ROD_SIZE)//WATER_CELL_SIZE).astype(int)
+        # y_ = np.floor(((self.Y[to_water]-self.start_pos[1,to_water])*randNum+self.start_pos[1,to_water])*ROD_CELL_HIGHT//WATER_CELL_SIZE).astype(int)
+        # water[x_,y_]+=1
+        # self.delete(to_water)
         randA.resize(self.X.size,refcheck=False)
         to_rod = np.where(2**(-(np.abs(self.k))/Uk)<randA)
         reactedRods = rods[np.floor(self.X[to_rod]).astype(int),np.floor(self.Y[to_rod]).astype(int)]
@@ -159,11 +160,11 @@ class ControlRod():
     def draw_PIL(self, draw:ImageDraw.ImageDraw):
         for i in range(ROD_COUNT-1):
             xcord = i*(ROD_SPACE+ROD_SIZE)+1.5*ROD_SPACE+0.5*ROD_SIZE
-            draw.rectangle((xcord, 0,ROD_SIZE+xcord, HIGHT*CONTROL_HIGHT),(50,50,50))
+            draw.rectangle((xcord, 0,ROD_SIZE+xcord, HIGHT*control_hight),(50,50,50))
     def draw(self, screen):
         for i in range(ROD_COUNT-1):
             xcord = i*(ROD_SPACE+ROD_SIZE)+1.5*ROD_SPACE+0.5*ROD_SIZE+origin[0]
-            pg.draw.rect(screen, (50,50,50), pg.Rect(xcord, origin[1], ROD_SIZE, HIGHT*CONTROL_HIGHT))
+            pg.draw.rect(screen, (50,50,50), pg.Rect(xcord, origin[1], ROD_SIZE, HIGHT*control_hight))
 
 class WaterFiled():
     def __init__(self):
@@ -183,11 +184,24 @@ class WaterFiled():
 
 class Robot():
     def __init__(self):
+        self.down_timer = 10
         self.activity:float
-        self.prev_count:int
-    def tick(self, ns:NeutronSystem):
+        self.prev_count:int = 1
+        self.sum:int = 0
+        self.target = 1_000_000
+    def PID(self, error, a, b, y):
+        return a*error + b*self.sum + y*(self.activity-1)
+    def tick(self, ns:NeutronSystem, hight):
         count_n = ns.X.size
+        self.sum += self.target - count_n
         self.activity = count_n/self.prev_count
+        if self.down_timer == 0:
+            hight -= self.PID(self.target - count_n, 0.3, 0.001, 1)
+        else:
+            self.down_timer-=1
+        self.prev_count = max(count_n,1)
+        return min(max(hight,0),1)
+        
 
 origin = (100,10)
 
@@ -207,6 +221,7 @@ prev_count = 1
 prev_k = 1
 power = 1
 PAUSE = True
+dots = []
 if LIFE:
     pg.init()
     screen = pg.display.set_mode((1200, 700))
@@ -233,7 +248,8 @@ if LIFE:
             
             rods.tick()
             wf.tick()
-            rbt.tick(Nsys)
+            if ROBOT:
+                control_hight = rbt.tick(Nsys,control_hight)
             #рисуем fps и прочие
             pg.draw.rect(screen,(0,0,0),pg.Rect(100,600,400,40))
             screen.blit(pg.font.SysFont("monospace", 15).render(str(1/(time.time()-start_time))+
@@ -245,33 +261,37 @@ if LIFE:
                         True,(255,255,255),(0,0,0)),(100,640))
             prev_k = Nsys.X.size/(prev_count+1)
             prev_count = Nsys.X.size
+            dots.append(prev_count)
             pg.display.flip()
         for event in pg.event.get():
             if event.type == pg.QUIT:
+                plt.plot(dots)
+                plt.yscale("log")
+                plt.show()
                 pg.quit()
                 sys.exit()
-            if event.type == pg.MOUSEBUTTONUP and not ROBOT:
-                CONTROL_HIGHT = min((pg.mouse.get_pos()[1]-origin[1])/HIGHT,1)
+            if event.type == pg.MOUSEBUTTONUP:
+                control_hight = min((pg.mouse.get_pos()[1]-origin[1])/HIGHT,1)
                 PAUSE= False
 else:
     counter = 1
     fourcc = cv2.VideoWriter.fourcc(*'mp4v')
     out = cv2.VideoWriter("out.mp4",fourcc,10,(WIDGH,HIGHT))
-    while(Nsys.X.size < 400_000_000):
+    while(Nsys.X.size < 10_000_000 and counter < 1000 and Nsys.X.size > 0):
         img = Image.new(mode="RGB",size=(WIDGH,HIGHT))
         draw = ImageDraw.Draw(img)
         for i in drawList:
             i.draw_PIL(draw)
-        Nsys.PIL_tick(rods,wf.field,draw)    
+        Nsys.PIL_tick(rods,wf.field,draw)     
         rods.tick()
         wf.tick()
-        rbt.tick(Nsys)
+        control_hight = rbt.tick(Nsys,control_hight)
         # img.show()
         out.write(cv2.cvtColor(np.array(img),cv2.COLOR_RGB2BGR))
         counter+=1
         print(counter , Nsys.X.size)
     out.release()
     print("готово")
-                
+
 
     
