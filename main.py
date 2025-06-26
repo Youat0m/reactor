@@ -222,6 +222,7 @@ prev_k = 1
 power = 1
 PAUSE = True
 dots = []
+dots2 = []
 if LIFE:
     pg.init()
     screen = pg.display.set_mode((1200, 700))
@@ -280,15 +281,16 @@ else:
     fig, axN = plt.subplots()
     axN.set_ylabel("колличество нейтронов")
     axN.set_yscale('log')
-    ax2 = axN.twiny()
+    ax2 = axN.twinx()
     ax2.set_ylabel("высота стержня")
-    while(Nsys.X.size < 10_000_000 and counter < 100 and Nsys.X.size > 0):
+    ax2.set_ylim((0,1))
+    while(Nsys.X.size < 10_000_000 and counter < 200 and Nsys.X.size > 0):
         img = Image.new(mode="RGB",size=(WIDGH,HIGHT))
         draw = ImageDraw.Draw(img)
         for i in drawList:
             i.draw_PIL(draw)
-        axN.plot((counter,Nsys.X.size))
-        ax2.plot((counter,1-control_hight))
+        dots.append(Nsys.X.size)
+        dots2.append(1-control_hight)
         Nsys.PIL_tick(rods,wf.field,draw)     
         rods.tick()
         wf.tick()
@@ -298,6 +300,9 @@ else:
         counter+=1
         print(counter , Nsys.X.size)
     out.release()
+    axN.plot(dots,color='b',label="нейтроны")
+    ax2.plot(dots2,color='g',label="высота стержней управления")
+    fig.legend()
     fig.savefig("fig.png")
     print("готово")
 
