@@ -13,7 +13,7 @@ drawList = []
 rod_list = []
 
 # Collision_objects = {}
-LIFE = True
+LIFE = False
 ROBOT = False
 XENON_TILE = 0.01
 ROD_HIGHT_COUNT = 32 #высота стрежня в клетках симуляции
@@ -26,7 +26,7 @@ origin = np.array((150,200))
 ROD_COUNT = 16
 CLOCK_TIME = 10
 ROD_SPACE = int((1024-ROD_SIZE*ROD_COUNT)/(ROD_COUNT+1)) #расстояние между стрежнями
-CONTROL_HIGHT = 0.0
+CONTROL_HIGHT = 0.4
 WATER_CELL_SIZE = 32
 
 Uk = 20
@@ -44,12 +44,12 @@ class NeutronSystem():
         self.results:np.ndarray
     def add(self,x:float,y:float,angle:float):
         size = self.X.size + 1
-        self.X.resize(size)
-        self.Y.resize(size)
-        self.k.resize(size)
-        self.Alpha.resize(size)
+        self.X.resize(size,refcheck=False)
+        self.Y.resize(size,refcheck=False)
+        self.k.resize(size,refcheck=False)
+        self.Alpha.resize(size,refcheck=False)
         self.Alpha[size-1] = angle
-        self.Vy.resize(size)
+        self.Vy.resize(size,refcheck=False)
         self.Y[size-1] = y
         self.X[size-1] = x
         self.k = ROD_SPACE/np.cos(self.Alpha)
@@ -75,10 +75,10 @@ class NeutronSystem():
         y_ = np.floor(((self.Y[to_water]-self.start_pos[1,to_water])*randNum+self.start_pos[1,to_water])*ROD_CELL_HIGHT//WATER_CELL_SIZE).astype(int)
         water[x_,y_]+=1
         self.delete(to_water)
-        randA.resize(self.X.size)
+        randA.resize(self.X.size,refcheck=False)
         to_rod = np.where(2**(-(np.abs(self.k))/Uk)<randA)
         reactedRods = rods[np.floor(self.X[to_rod]).astype(int),np.floor(self.Y[to_rod]).astype(int)]
-        randA.resize(reactedRods.size)
+        randA.resize(reactedRods.size, refcheck=False)
         reactedXe = reactedRods>randA
         self.results=np.zeros_like(self.X)
         self.results[to_rod] = 1+(reactedXe)
@@ -91,9 +91,9 @@ class NeutronSystem():
         self.Alpha = np.concatenate([self.Alpha, np.repeat(self.Alpha[to_u_rod],3)])
         self.delete(to_rod)
         size = self.X.size
-        self.k.resize(size)
-        self.Vy.resize(size)
-        self.k.resize(size)
+        self.k.resize(size,refcheck=False)
+        self.Vy.resize(size,refcheck=False)
+        self.k.resize(size,refcheck=False)
         self.Alpha += (np.random.sample(self.X.size)-0.5)*math.pi
         self.k = ROD_SPACE/np.cos(self.Alpha)
         self.Vy = np.sin(self.Alpha)*np.abs(self.k)/(HIGHT/ROD_HIGHT_COUNT)
@@ -118,13 +118,13 @@ class NeutronSystem():
         self.PIL_draw(c)
     
     def PIL_draw(self, draw:ImageDraw.ImageDraw):
-        for i in range(min(self.start_pos.shape[0],10000)):
-            draw.line([((self.start_pos[i][0]+1)*(ROD_SPACE+ROD_SIZE)+origin[0],
-                          self.start_pos[i][1]*ROD_CELL_HIGHT+origin[1]),
-                         ((self.X[i]+1)*(ROD_SPACE+ROD_SIZE)+origin[0]
-                          ,self.Y[i]*ROD_CELL_HIGHT+origin[1])],fill=(255,255,255),width=1)
-            draw.circle(((self.X[i]+1)*(ROD_SPACE+ROD_SIZE)+origin[0]
-                          ,self.Y[i]*ROD_CELL_HIGHT+origin[1]),3,fill=(255,0,0))
+        for i in range(min(self.start_pos.shape[0],1000)):
+            draw.line([((self.start_pos[i][0]+1)*(ROD_SPACE+ROD_SIZE),
+                          self.start_pos[i][1]*ROD_CELL_HIGHT),
+                         ((self.X[i]+1)*(ROD_SPACE+ROD_SIZE)
+                          ,self.Y[i]*ROD_CELL_HIGHT)],fill=(255,255,255),width=1)
+            draw.circle(((self.X[i]+1)*(ROD_SPACE+ROD_SIZE)
+                          ,self.Y[i]*ROD_CELL_HIGHT),3,fill=(255,0,0))
     
     def delete(self,to_delete):
         self.X = np.delete(self.X,to_delete)
@@ -152,12 +152,17 @@ class Urod():
     
     def draw_PIL(self, draw:ImageDraw.ImageDraw):
         for ix, iy in np.ndindex(self.XenonField.shape):
-            xcord = origin[0]+ix*ROD_SIZE+ix*ROD_SPACE+ROD_SPACE
-            bColor = max(0,min(self.XenonField[ix,iy]*255,255))
-            pg.draw.rect(screen,(0,200,bColor),pg.Rect(xcord,origin[1]+iy*(int(ROD_CELL_HIGHT)),ROD_SIZE,int(ROD_CELL_HIGHT)))
+            xcord = ix*ROD_SIZE+ix*ROD_SPACE+ROD_SPACE
+            bColor = int(max(0,min(self.XenonField[ix,iy]*255,255)))
+            xy = (xcord,origin[1]+iy*(int(ROD_CELL_HIGHT)))
+            draw.rectangle((xy,(xy[0]+ROD_SIZE,xy[1]+int(ROD_CELL_HIGHT))),(0,200,bColor))
 
 
 class ControlRod():
+    def draw_PIL(self, draw:ImageDraw.ImageDraw):
+        for i in range(ROD_COUNT-1):
+            xcord = i*(ROD_SPACE+ROD_SIZE)+1.5*ROD_SPACE+0.5*ROD_SIZE
+            draw.rectangle((xcord, 0,ROD_SIZE+xcord, HIGHT*CONTROL_HIGHT),(50,50,50))
     def draw(self, screen):
         for i in range(ROD_COUNT-1):
             xcord = i*(ROD_SPACE+ROD_SIZE)+1.5*ROD_SPACE+0.5*ROD_SIZE+origin[0]
@@ -172,6 +177,13 @@ class WaterFiled():
         for ix, iy in np.ndindex(self.field.shape):
             color = min(self.field[ix,iy],255)
             pg.draw.rect(screen, (color, color, 200), pg.Rect(ix*WATER_CELL_SIZE+origin[0]+10,iy*WATER_CELL_SIZE+origin[1]+10,WATER_CELL_SIZE,WATER_CELL_SIZE))
+    def draw_PIL(self, draw:ImageDraw.ImageDraw):
+        for ix, iy in np.ndindex(self.field.shape):
+            color = int(min(self.field[ix,iy],255))
+            x = ix*WATER_CELL_SIZE
+            y = iy*WATER_CELL_SIZE
+            draw.rectangle((x,y,x+WATER_CELL_SIZE,y+WATER_CELL_SIZE),(color, color, 200))
+
 class Robot():
     def tick(self, ns:NeutronSystem, reactivity):
         pass
@@ -189,13 +201,6 @@ for i in range(1000):
     Nsys.add(randint(0,14),randint(0,14),random()*2*math.pi)
 print("finish adding")
 
-pg.init()
-screen = pg.display.set_mode((1200, 700))
-pg.draw.rect(screen, (0,100,100), pg.Rect(origin, (1043,531)), 10)
-pg.draw.circle(screen,(255,0,0), (origin[0],origin[1]),20)
-pg.draw.circle(screen,(255,0,0), (((ROD_COUNT-1)*(ROD_SPACE+ROD_SIZE)+origin[0],
-                          (ROD_HIGHT_COUNT-1)*ROD_CELL_HIGHT+origin[1])),20)
-pg.display.flip()
 
 prev_count = 1
 prev_k = 1
@@ -203,6 +208,13 @@ power = 1
 PAUSE = True
 if LIFE:
     while True:
+        pg.init()
+        screen = pg.display.set_mode((1200, 700))
+        pg.draw.rect(screen, (0,100,100), pg.Rect(origin, (1043,531)), 10)
+        pg.draw.circle(screen,(255,0,0), (origin[0],origin[1]),20)
+        pg.draw.circle(screen,(255,0,0), (((ROD_COUNT-1)*(ROD_SPACE+ROD_SIZE)+origin[0],
+                                (ROD_HIGHT_COUNT-1)*ROD_CELL_HIGHT+origin[1])),20)
+        pg.display.flip()
         if not PAUSE:
             pg.time.Clock().tick(10)
             start_time = time.time()
@@ -242,15 +254,21 @@ if LIFE:
 else:
     counter = 1
     fourcc = cv2.VideoWriter.fourcc(*'mp4v')
-    out = cv2.VideoWriter("out.mp4",fourcc,20,(WIDGH,HIGHT))
-    while(counter< 10000):
+    out = cv2.VideoWriter("out.mp4",fourcc,10,(WIDGH,HIGHT))
+    while(counter<500):
         img = Image.new(mode="RGB",size=(WIDGH,HIGHT))
         draw = ImageDraw.Draw(img)
         for i in drawList:
             i.draw_PIL(draw)
-        Nsys.tick(rods,wf.field)    
+        Nsys.PIL_tick(rods,wf.field,draw)    
         rods.tick()
         wf.tick()
+        # img.show()
+        out.write(cv2.cvtColor(np.array(img),cv2.COLOR_RGB2BGR))
+        counter+=1
+        print(counter , Nsys.X.size)
+    out.release()
+    print("готово")
                 
 
     
