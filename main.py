@@ -23,7 +23,7 @@ origin = np.array((150,200))
 ROD_COUNT = 16
 CLOCK_TIME = 10
 ROD_SPACE = int((1024-ROD_SIZE*ROD_COUNT)/(ROD_COUNT+1)) #расстояние между стрежнями
-control_hight = 0.4
+control_hight = 0.1
 WATER_CELL_SIZE = 32
 
 Uk = 40
@@ -139,7 +139,7 @@ class Urod():
         self.XenonField:np.ndarray = np.full((ROD_COUNT,ROD_HIGHT_COUNT),0.1)
         drawList.append(self)
     def tick(self):
-        self.XenonField+=0.005
+        self.XenonField+=XENON_TILE
         if random()<0.15:
             Nsys.add(randint(0,14),randint(0,14),random()*2*math.pi)
     def draw(self,screen:pg.surface.Surface):
@@ -188,7 +188,7 @@ class Robot():
         self.activity:float
         self.prev_count:int = 1
         self.sum:int = 0
-        self.target = 1_000_000
+        self.target = 20_000
     def PID(self, error, a, b, y):
         return a*error + b*self.sum + y*(self.activity-1)
     def tick(self, ns:NeutronSystem, hight):
@@ -196,9 +196,11 @@ class Robot():
         self.sum += self.target - count_n
         self.activity = count_n/self.prev_count
         if self.down_timer == 0:
-            hight -= self.PID(self.target - count_n, 0.00000003, 0, -0.3)
+            hight -= self.PID(self.target - count_n, 0.0000003, 0.00000000001, -0.1)
         else:
             self.down_timer-=1
+        # if count_n < 1500:
+        #     hight = 0
         self.prev_count = max(count_n,1)
         return min(max(hight,0),1)
         
@@ -276,15 +278,27 @@ if LIFE:
                 PAUSE= False
 else:
     counter = 1
+    change_counter = 0
+    s_count = 0
+    c_count = 0
     fourcc = cv2.VideoWriter.fourcc(*'mp4v')
     out = cv2.VideoWriter("out.mp4",fourcc,10,(WIDGH,HIGHT))
     fig, axN = plt.subplots()
     axN.set_ylabel("колличество нейтронов")
     axN.set_yscale('log')
     ax2 = axN.twinx()
-    ax2.set_ylabel("высота стержня")
+    ax2.set_ylabel("высота стержней")
     ax2.set_ylim((0,1))
-    while(Nsys.X.size < 10_000_000 and counter < 200 and Nsys.X.size > 0):
+    ax2.axvline(800,color='r')
+    while(Nsys.X.size < 10_000_000 and counter < 1500 and Nsys.X.size > 0):
+        if Nsys.X.size < 20_000:
+            change_counter+=1
+            if change_counter>300 and rbt.target > 8_000:
+                s_count = counter
+                ax2.axvline(counter,color='r')
+                rbt.target = 8_000
+        if counter>800 and rbt.target != 4000:
+            rbt.target =4000
         img = Image.new(mode="RGB",size=(WIDGH,HIGHT))
         draw = ImageDraw.Draw(img)
         for i in drawList:
@@ -299,10 +313,14 @@ else:
         out.write(cv2.cvtColor(np.array(img),cv2.COLOR_RGB2BGR))
         counter+=1
         print(counter , Nsys.X.size)
+    axN.axhline(y=20_000,xmin=0,xmax=s_count/counter, color='k')
+    axN.axhline(y=8_000,xmin=s_count/counter,xmax=800/counter,color='k')
+    axN.axhline(y=4_000,xmin=800/counter,xmax=1,color='k')
     out.release()
     axN.plot(dots,color='b',label="нейтроны")
     ax2.plot(dots2,color='g',label="высота стержней управления")
     fig.legend()
+    fig.set_size_inches((15*(counter/1000),10))
     fig.savefig("fig.png")
     print("готово")
 
