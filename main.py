@@ -1,4 +1,3 @@
-from dataclasses import dataclass, field
 import math
 from random import randint, random
 import time
@@ -9,10 +8,7 @@ import cv2
 from PIL import Image, ImageDraw
 
 
-drawList = []
-rod_list = []
 
-# Collision_objects = {}
 LIFE = False
 ROBOT = False
 XENON_TILE = 0.01
@@ -32,6 +28,7 @@ WATER_CELL_SIZE = 32
 Uk = 20
 Wk = 200
 
+drawList = []
 
 
 class NeutronSystem():
@@ -185,8 +182,12 @@ class WaterFiled():
             draw.rectangle((x,y,x+WATER_CELL_SIZE,y+WATER_CELL_SIZE),(color, color, 200))
 
 class Robot():
-    def tick(self, ns:NeutronSystem, reactivity):
-        pass
+    def __init__(self):
+        self.activity:float
+        self.prev_count:int
+    def tick(self, ns:NeutronSystem):
+        count_n = ns.X.size
+        self.activity = count_n/self.prev_count
 
 origin = (100,10)
 
@@ -195,7 +196,7 @@ drawList.append(wf)
 Nsys = NeutronSystem()
 rods = Urod()
 drawList.append(ControlRod())
-
+rbt = Robot()
 print("adding neutrons")
 for i in range(1000):
     Nsys.add(randint(0,14),randint(0,14),random()*2*math.pi)
@@ -207,14 +208,14 @@ prev_k = 1
 power = 1
 PAUSE = True
 if LIFE:
+    pg.init()
+    screen = pg.display.set_mode((1200, 700))
+    pg.draw.rect(screen, (0,100,100), pg.Rect(origin, (1043,531)), 10)
+    pg.draw.circle(screen,(255,0,0), (origin[0],origin[1]),20)
+    pg.draw.circle(screen,(255,0,0), (((ROD_COUNT-1)*(ROD_SPACE+ROD_SIZE)+origin[0],
+                            (ROD_HIGHT_COUNT-1)*ROD_CELL_HIGHT+origin[1])),20)
+    pg.display.flip()
     while True:
-        pg.init()
-        screen = pg.display.set_mode((1200, 700))
-        pg.draw.rect(screen, (0,100,100), pg.Rect(origin, (1043,531)), 10)
-        pg.draw.circle(screen,(255,0,0), (origin[0],origin[1]),20)
-        pg.draw.circle(screen,(255,0,0), (((ROD_COUNT-1)*(ROD_SPACE+ROD_SIZE)+origin[0],
-                                (ROD_HIGHT_COUNT-1)*ROD_CELL_HIGHT+origin[1])),20)
-        pg.display.flip()
         if not PAUSE:
             pg.time.Clock().tick(10)
             start_time = time.time()
@@ -232,6 +233,7 @@ if LIFE:
             
             rods.tick()
             wf.tick()
+            rbt.tick(Nsys)
             #рисуем fps и прочие
             pg.draw.rect(screen,(0,0,0),pg.Rect(100,600,400,40))
             screen.blit(pg.font.SysFont("monospace", 15).render(str(1/(time.time()-start_time))+
@@ -248,14 +250,14 @@ if LIFE:
             if event.type == pg.QUIT:
                 pg.quit()
                 sys.exit()
-            if event.type == pg.MOUSEBUTTONUP:
+            if event.type == pg.MOUSEBUTTONUP and not ROBOT:
                 CONTROL_HIGHT = min((pg.mouse.get_pos()[1]-origin[1])/HIGHT,1)
                 PAUSE= False
 else:
     counter = 1
     fourcc = cv2.VideoWriter.fourcc(*'mp4v')
     out = cv2.VideoWriter("out.mp4",fourcc,10,(WIDGH,HIGHT))
-    while(counter<500):
+    while(Nsys.X.size < 400_000_000):
         img = Image.new(mode="RGB",size=(WIDGH,HIGHT))
         draw = ImageDraw.Draw(img)
         for i in drawList:
@@ -263,6 +265,7 @@ else:
         Nsys.PIL_tick(rods,wf.field,draw)    
         rods.tick()
         wf.tick()
+        rbt.tick(Nsys)
         # img.show()
         out.write(cv2.cvtColor(np.array(img),cv2.COLOR_RGB2BGR))
         counter+=1
