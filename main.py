@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 
 
 
-LIFE = True
-ROBOT = False
+LIFE = False
+ROBOT = True
 XENON_TILE = 0.01
 ROD_HIGHT_COUNT = 32 #высота стрежня в клетках симуляции
 HIGHT = 512
@@ -196,7 +196,7 @@ class Robot():
         self.sum += self.target - count_n
         self.activity = count_n/self.prev_count
         if self.down_timer == 0:
-            hight -= self.PID(self.target - count_n, 0.3, 0.001, 1)
+            hight -= self.PID(self.target - count_n, 0.00000003, 0, -0.3)
         else:
             self.down_timer-=1
         self.prev_count = max(count_n,1)
@@ -277,11 +277,18 @@ else:
     counter = 1
     fourcc = cv2.VideoWriter.fourcc(*'mp4v')
     out = cv2.VideoWriter("out.mp4",fourcc,10,(WIDGH,HIGHT))
-    while(Nsys.X.size < 10_000_000 and counter < 1000 and Nsys.X.size > 0):
+    fig, axN = plt.subplots()
+    axN.set_ylabel("колличество нейтронов")
+    axN.set_yscale('log')
+    ax2 = axN.twiny()
+    ax2.set_ylabel("высота стержня")
+    while(Nsys.X.size < 10_000_000 and counter < 100 and Nsys.X.size > 0):
         img = Image.new(mode="RGB",size=(WIDGH,HIGHT))
         draw = ImageDraw.Draw(img)
         for i in drawList:
             i.draw_PIL(draw)
+        axN.plot((counter,Nsys.X.size))
+        ax2.plot((counter,1-control_hight))
         Nsys.PIL_tick(rods,wf.field,draw)     
         rods.tick()
         wf.tick()
@@ -291,6 +298,7 @@ else:
         counter+=1
         print(counter , Nsys.X.size)
     out.release()
+    fig.savefig("fig.png")
     print("готово")
 
 
